@@ -18,12 +18,26 @@ def load_existing_jobs():
         with open('jobs.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if row['title']:  # Tylko jeśli tytuł nie jest pusty
+                if row['title'] and row['title'] != '403 ERROR':  # Tylko jeśli tytuł nie jest pusty i nie jest błędem
                     existing_jobs.add(row['title'].strip().lower())
         print(f"Loaded {len(existing_jobs)} existing jobs for deduplication")
     except FileNotFoundError:
         print("Brak istniejącego pliku jobs.csv - zaczynamy od zera")
     return existing_jobs
+
+
+def count_existing_jobs():
+    """Liczy ile ogłoszeń już mamy zapisanych"""
+    try:
+        with open('jobs.csv', 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            count = 0
+            for row in reader:
+                if row['title'] and row['title'] != '403 ERROR':
+                    count += 1
+        return count
+    except FileNotFoundError:
+        return 0
 
 
 async def analyze_total_pages():
@@ -229,10 +243,10 @@ async def scrape_jobs_in_batches(links, batch_size=5):
             print(f"\nBATCH {batch_num} STATUS:")
             print(tabulate(stats_data, headers=["Metric", "Value"], tablefmt="grid"))
         
-        # Pause between batches
+        # Pause between batches - zwiększona pauza
         if i + batch_size < total_links:
-            print(f"Pause 5 seconds before next batch...")
-            time.sleep(5)
+            print(f"Pause 10 seconds before next batch...")
+            time.sleep(10)
     
     # Podsumowanie końcowe
     total_time = time.time() - start_time
@@ -256,10 +270,13 @@ async def scrape_single_job(browser, url):
     try:
         new_page = await browser.new_page()
         await new_page.goto(url, wait_until="networkidle", timeout=30000)
-        await new_page.wait_for_timeout(2000)
+        await new_page.wait_for_timeout(3000)  # Zwiększona pauza - 3 sekundy
         
         job_data = await extract_job_data(new_page, url)
         await new_page.close()
+        
+        # Dodatkowa pauza po każdym ogłoszeniu
+        await asyncio.sleep(1)
         return job_data
         
     except Exception as e:
@@ -270,7 +287,11 @@ async def scrape_single_job(browser, url):
 async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
     """Główna funkcja scrapowania w trybie batch - scrapuje od razu bez analizy"""
     
+    # Sprawdź ile już mamy
+    existing_count = count_existing_jobs()
+    
     print(f"=== SCRAPER BATCH MODE ===")
+    print(f"Current jobs in database: {existing_count}")
     if target_count:
         print(f"Target: {target_count} jobs in batches of {batch_size}")
     else:
@@ -280,6 +301,7 @@ async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
     all_collected_jobs = []
     page_num = 1
     total_scraped = 0
+    total_found_on_site = 0
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -294,13 +316,15 @@ async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
                 print(f"Scanning: {url}")
                 
                 await page.goto(url, wait_until="networkidle", timeout=30000)
-                await page.wait_for_timeout(3000)
+                await page.wait_for_timeout(5000)  # Zwiększona pauza - 5 sekund
                 
                 job_links = await page.query_selector_all('a[href*="/oferta/praca/"]')
                 
                 if not job_links:
                     print(f"Page {page_num}/25: No more job listings found - stopping")
                     break
+                
+                total_found_on_site += len(job_links)
                 
                 # Znajdź nowe ogłoszenia (nie ma w datasetcie)
                 new_links = []
@@ -322,17 +346,20 @@ async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
                         except:
                             new_links.append(full_url)
                 
+                current_total = existing_count + total_scraped
+                print(f"Progress: {current_total}/{total_found_on_site} jobs")
                 print(f"Page {page_num}/25: Found {len(job_links)} total jobs, {len(new_links)} new jobs")
                 
                 # Krok 2: Jeśli są nowe ogłoszenia, scrapuj je od razu
                 if new_links:
-                    print(f"Scraping {len(new_links)} new jobs from page {page_num}...")
+                    print(f"Downloading [{len(new_links)} new jobs from page {page_num}]...")
                     page_jobs = await scrape_jobs_in_batches(new_links, batch_size)
                     
                     if page_jobs:
                         all_collected_jobs.extend(page_jobs)
                         total_scraped += len(page_jobs)
                         print(f"Page {page_num} completed: {len(page_jobs)} jobs scraped")
+                        print(f"Total progress: {existing_count + total_scraped}/{total_found_on_site}")
                 
                 await page.close()
                 
@@ -347,13 +374,18 @@ async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
                     break
                     
                 page_num += 1
-                time.sleep(2)  # Pauza między stronami
+                print("Waiting 8 seconds before next page...")  # Zwiększona pauza
+                time.sleep(8)  # Zwiększona pauza między stronami - 8 sekund
         
         finally:
             await browser.close()
     
+    final_total = existing_count + total_scraped
     print(f"\nSCRAPING COMPLETED")
-    print(f"Total collected: {total_scraped} jobs")
+    print(f"Jobs found on site: {total_found_on_site}")
+    print(f"Jobs in database before: {existing_count}")
+    print(f"New jobs scraped: {total_scraped}")
+    print(f"Total jobs in database: {final_total}")
     print(f"Saved to: jobs.csv")
     
     return all_collected_jobs
