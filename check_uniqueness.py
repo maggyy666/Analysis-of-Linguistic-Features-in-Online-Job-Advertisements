@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Script to check uniqueness of records in jobs.csv
 Analyzes duplicates by different criteria and generates detailed report

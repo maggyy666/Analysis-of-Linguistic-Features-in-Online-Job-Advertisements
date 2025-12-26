@@ -27,22 +27,44 @@ def get_target_count_from_jobs_csv():
                     count += 1
         return count
     except FileNotFoundError:
-        return 1322  # Default fallback
+        return 1321  # Default fallback
+
+
+def job_id_from_url(url: str) -> str:
+    """Extracts job ID from Gumtree URL (e.g., '5417380692' from '.../5417380692')"""
+    return url.rstrip("/").split("/")[-1]
 
 
 def load_existing_gumtree_jobs():
-    """Loads existing Gumtree jobs from gumtree_jobs.csv for internal deduplication only"""
-    existing_jobs = set()
+    """Loads existing Gumtree jobs from gumtree_jobs.csv for deduplication by ID (not title - titles repeat on Gumtree)"""
+    existing_ids = set()
     try:
         with open('gumtree_jobs.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if row.get('url'):
-                    existing_jobs.add(row['url'].strip().lower())
-        print(f"Loaded {len(existing_jobs)} existing Gumtree jobs for deduplication")
+                url = (row.get('url') or "").strip()
+                if url:
+                    job_id = job_id_from_url(url)
+                    existing_ids.add(job_id)
+        print(f"Loaded {len(existing_ids)} existing Gumtree jobs for deduplication (by ID)")
     except FileNotFoundError:
         print("No existing gumtree_jobs.csv file - starting fresh")
-    return existing_jobs
+    return existing_ids
+
+
+def count_existing_gumtree_jobs():
+    """Counts how many Gumtree jobs we already have saved"""
+    try:
+        with open('gumtree_jobs.csv', 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            count = 0
+            for row in reader:
+                # Count valid jobs (not 403 errors)
+                if row.get('title') and row.get('title') != '403 ERROR':
+                    count += 1
+        return count
+    except FileNotFoundError:
+        return 0
 
 
 def normalize_base_url(url: str) -> str:
@@ -70,30 +92,65 @@ def build_listing_urls(base_url: str, page_num: int) -> list:
 
 
 async def collect_links_from_listing(page):
-    """Collects job links from already loaded listing page"""
-    links = set()
+    """Collects job links and titles from already loaded listing page (like simple_scraper.py)"""
+    links_with_titles = []  # List of dicts: {'url': ..., 'title': ...}
 
     # Primary: data-q anchors
     for a in await page.query_selector_all('a[data-q="search-result-anchor"]'):
         href = await a.get_attribute("href")
         if href:
-            links.add(urljoin(GUMTREE_BASE, href.split("?")[0]))
+            full_url = urljoin(GUMTREE_BASE, href.split("?")[0])
+            # Try to get title from listing (like simple_scraper.py does)
+            title = ""
+            try:
+                # Try to find title element near the link
+                title_elem = await a.query_selector('h3, h4, .title, [class*="title"]')
+                if title_elem:
+                    title = (await title_elem.inner_text()).strip()
+                # Fallback: try parent or sibling
+                if not title:
+                    parent = await a.query_selector('xpath=..')
+                    if parent:
+                        title_elem = await parent.query_selector('h3, h4, .title, [class*="title"]')
+                        if title_elem:
+                            title = (await title_elem.inner_text()).strip()
+            except:
+                pass
+            
+            links_with_titles.append({'url': full_url, 'title': title})
 
     # Fallback: /p/ style links
-    if not links:
+    if not links_with_titles:
         for a in await page.query_selector_all('a[href^="/p/"]'):
             href = await a.get_attribute("href")
             if href:
-                links.add(urljoin(GUMTREE_BASE, href.split("?")[0]))
+                full_url = urljoin(GUMTREE_BASE, href.split("?")[0])
+                title = ""
+                try:
+                    title_elem = await a.query_selector('h3, h4, .title, [class*="title"]')
+                    if title_elem:
+                        title = (await title_elem.inner_text()).strip()
+                except:
+                    pass
+                links_with_titles.append({'url': full_url, 'title': title})
 
-    return list(links)
+    return links_with_titles
 
 
 async def read_dt_dd(page, label: str) -> str:
     """Reads value from dt/dd pair (Gumtree job details format)"""
-    loc = page.locator(f"xpath=//dt[normalize-space()='{label}']/following-sibling::dd[1]")
-    if await loc.count():
-        return " ".join((await loc.first.inner_text()).split()).strip()
+    # Try multiple XPath patterns for dt/dd pairs
+    patterns = [
+        f"xpath=//dt[normalize-space()='{label}']/following-sibling::dd[1]",
+        f"xpath=//dt[contains(normalize-space(), '{label}')]/following-sibling::dd[1]",
+        f"xpath=//*[normalize-space()='{label}']/following-sibling::*[1]",
+    ]
+    for pattern in patterns:
+        loc = page.locator(pattern)
+        if await loc.count():
+            text = " ".join((await loc.first.inner_text()).split()).strip()
+            if text:
+                return text
     return ""
 
 
@@ -119,18 +176,57 @@ async def extract_job_data_gumtree(page, url):
             job["title"] = (await h1.inner_text()).strip()
 
         # Location: najczęściej jest bezpośrednio po h1 jako h4 (np. "Northwich, Cheshire")
-        loc = page.locator("h1 + h4")
-        if await loc.count():
-            job["location"] = " ".join((await loc.first.inner_text()).split()).strip()
+        # Try multiple location selectors
+        location_selectors = [
+            "h1 + h4",
+            "h1 + h3",
+            "h1 + p",
+            '[data-q="vip-location"]',
+            '.location',
+            '[itemprop="addressLocality"]',
+        ]
+        for selector in location_selectors:
+            loc = page.locator(selector)
+            if await loc.count():
+                location_text = " ".join((await loc.first.inner_text()).split()).strip()
+                if location_text:
+                    job["location"] = location_text
+                    break
+        
+        # Fallback: try to extract from dt/dd
+        if not job["location"]:
+            job["location"] = await read_dt_dd(page, "Location") or await read_dt_dd(page, "Area")
 
         # Pola z sekcji details (Salary / Recruiter / Contract Type / Hours)
-        job["salary"] = await read_dt_dd(page, "Salary")
-        job["contract_type"] = await read_dt_dd(page, "Contract Type")
-        job["work_time"] = await read_dt_dd(page, "Hours") or await read_dt_dd(page, "Working hours")
+        # Try multiple labels for salary
+        salary_raw = (
+            await read_dt_dd(page, "Salary")
+            or await read_dt_dd(page, "Pay")
+            or await read_dt_dd(page, "Wage")
+            or await read_dt_dd(page, "Rate")
+        )
+        
+        # Clean salary - remove phone numbers and extra text, keep only salary-related info
+        if salary_raw:
+            # Remove phone numbers (UK format: 07xxx, 074xx, etc.)
+            salary_raw = re.sub(r'\b0\d{9,10}\b', '', salary_raw)
+            # Remove "Call or Text" patterns
+            salary_raw = re.sub(r'Call or Text[^.]*', '', salary_raw, flags=re.IGNORECASE)
+            # Remove email-like patterns
+            salary_raw = re.sub(r'\S+@\S+', '', salary_raw)
+            # Keep only if it contains currency symbol or numbers with salary keywords
+            if re.search(r'[£$€]|\d+.*(?:per|/|hour|day|week|month|year|annum|shift)', salary_raw, re.IGNORECASE):
+                job["salary"] = " ".join(salary_raw.split()).strip()
+            else:
+                job["salary"] = ""  # Not a valid salary, clear it
+        
+        job["contract_type"] = await read_dt_dd(page, "Contract Type") or await read_dt_dd(page, "Contract")
+        job["work_time"] = await read_dt_dd(page, "Hours") or await read_dt_dd(page, "Working hours") or await read_dt_dd(page, "Work hours")
         job["company"] = (
             await read_dt_dd(page, "Recruiter")
             or await read_dt_dd(page, "Company")
             or await read_dt_dd(page, "Advertiser")
+            or await read_dt_dd(page, "Employer")
         )
 
         # Description (stabilne: nagłówek "Description" i pierwszy blok po nim)
@@ -154,13 +250,34 @@ async def extract_job_data_gumtree(page, url):
 
         # Jeśli Salary brak, spróbuj wyłuskać z opisu (opcjonalnie, ale praktyczne)
         if not job["salary"] and job["description"]:
-            m = re.search(
-                r"(£\s?\d+(?:\.\d+)?(?:\s*-\s*£\s?\d+(?:\.\d+)?)?(?:\s*(?:per|/)\s*(?:hour|day|week|month|annum|year))?)",
-                job["description"],
-                re.IGNORECASE
-            )
-            if m:
-                job["salary"] = " ".join(m.group(1).split()).strip()
+            # Try multiple salary patterns - more comprehensive
+            salary_patterns = [
+                # £10 - £25 per hour (with currency symbols)
+                (r"£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s*-\s*£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:per|/)\s*(hour|hr|day|week|month|annum|year|shift)", 
+                 lambda m: f"£{m.group(1)} - £{m.group(2)} per {m.group(3)}"),
+                # £10-25 per hour (without second currency)
+                (r"£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s*-\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:per|/)\s*(hour|hr|day|week|month|annum|year|shift)",
+                 lambda m: f"£{m.group(1)} - £{m.group(2)} per {m.group(3)}"),
+                # £10 per hour
+                (r"£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:per|/)\s*(hour|hr|day|week|month|annum|year|shift)",
+                 lambda m: f"£{m.group(1)} per {m.group(2)}"),
+                # EARN £50-£120 PER DAY
+                (r"EARN\s+£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s*-\s*£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s*PER\s*(DAY|SHIFT)",
+                 lambda m: f"£{m.group(1)} - £{m.group(2)} per {m.group(3).lower()}"),
+                # £50-£120 per day (alternative format)
+                (r"£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s*-\s*£\s?(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:per|/)\s*(day|shift)",
+                 lambda m: f"£{m.group(1)} - £{m.group(2)} per {m.group(3)}"),
+            ]
+            
+            for pattern, formatter in salary_patterns:
+                m = re.search(pattern, job["description"], re.IGNORECASE)
+                if m:
+                    try:
+                        job["salary"] = formatter(m)
+                        job["salary"] = " ".join(job["salary"].split()).strip()
+                        break
+                    except:
+                        continue
 
     except Exception as e:
         print(f"Error extracting data from {url}: {str(e)}")
@@ -187,24 +304,71 @@ async def scrape_single_job_gumtree(context, url, semaphore):
 
 
 def save_to_csv(jobs, mode='w', filename='gumtree_jobs.csv'):
-    """Saves data to CSV file"""
+    """Saves data to CSV file with exact column order matching jobs.csv"""
+    # Exact order from jobs.csv: id,url,title,company,salary,location,work_time,contract_type,scraped_at,description
     headers = ['id', 'url', 'title', 'company', 'salary', 'location', 'work_time', 'contract_type', 'scraped_at', 'description']
+
+    # Check if file exists and has header
+    file_exists = False
+    has_header = False
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            first_line = f.readline().strip()
+            file_exists = True
+            # Check if first line matches header
+            if first_line == ','.join(headers):
+                has_header = True
+    except FileNotFoundError:
+        pass
 
     with open(filename, mode, newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=headers)
 
-        if mode == 'w':
+        # Write header if creating new file or if file exists but has no header
+        if mode == 'w' or (file_exists and not has_header):
             writer.writeheader()
 
         for job in jobs:
-            writer.writerow(job)
+            # Ensure all fields are present and in correct order
+            ordered_job = {key: job.get(key, '') for key in headers}
+            writer.writerow(ordered_job)
 
 
 def append_to_csv(new_jobs, filename='gumtree_jobs.csv'):
-    """Appends new jobs to existing CSV"""
-    if new_jobs:
-        save_to_csv(new_jobs, mode='a', filename=filename)
-        print(f"Saved {len(new_jobs)} new jobs to {filename}")
+    """Appends new jobs to existing CSV (ensures header exists)"""
+    if not new_jobs:
+        return
+    
+    headers = ['id', 'url', 'title', 'company', 'salary', 'location', 'work_time', 'contract_type', 'scraped_at', 'description']
+    
+    # Check if file exists
+    file_exists = False
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            file_exists = True
+            first_line = f.readline().strip()
+            # Check if first line is header
+            if first_line != ','.join(headers):
+                # File exists but no header - need to add it
+                f.seek(0)
+                existing_content = f.read()
+                with open(filename, 'w', newline='', encoding='utf-8') as fw:
+                    writer = csv.DictWriter(fw, fieldnames=headers)
+                    writer.writeheader()
+                    fw.write(existing_content)
+    except FileNotFoundError:
+        pass
+    
+    # Append new jobs
+    with open(filename, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=headers)
+        # Write header if file is new
+        if not file_exists:
+            writer.writeheader()
+        for job in new_jobs:
+            ordered_job = {key: job.get(key, '') for key in headers}
+            writer.writerow(ordered_job)
+    print(f"Saved {len(new_jobs)} new jobs to {filename}")
 
 
 async def scrape_gumtree_batch_mode(start_url, target_count=None, concurrency=3):
@@ -221,9 +385,9 @@ async def scrape_gumtree_batch_mode(start_url, target_count=None, concurrency=3)
         target_count = get_target_count_from_jobs_csv()
         print(f"Target count set from jobs.csv: {target_count} jobs")
     
-    # Load only Gumtree jobs for internal deduplication (separate file)
-    existing_gumtree_jobs = load_existing_gumtree_jobs()
-    existing_count_in_file = len(existing_gumtree_jobs)
+    # Load existing Gumtree jobs for deduplication (by ID - titles repeat too much on Gumtree)
+    existing_gumtree_ids = load_existing_gumtree_jobs()
+    existing_count_in_file = count_existing_gumtree_jobs()
 
     print(f"=== GUMTREE SCRAPER BATCH MODE ===")
     print(f"Existing jobs in gumtree_jobs.csv: {existing_count_in_file}")
@@ -237,6 +401,7 @@ async def scrape_gumtree_batch_mode(start_url, target_count=None, concurrency=3)
     total_found_on_site = 0
     page_num = 1
     base_url = normalize_base_url(start_url)
+    last_fingerprint = None  # For detecting pagination loops
 
     # Semaphore for concurrency control
     semaphore = asyncio.Semaphore(concurrency)
@@ -273,16 +438,38 @@ async def scrape_gumtree_batch_mode(start_url, target_count=None, concurrency=3)
                         await listing_page.close()
                         break
 
+                    # Check for pagination loop (same results as previous page)
+                    page_ids = [job_id_from_url(x["url"]) for x in listing_links if x.get("url")]
+                    fingerprint = tuple(page_ids[:10])  # First 10 IDs as fingerprint
+                    if fingerprint == last_fingerprint and page_num > 1:
+                        print(f"Page {page_num}: Pagination seems stuck (same results as previous page). Stopping.")
+                        await listing_page.close()
+                        break
+                    last_fingerprint = fingerprint
+
                     total_found_on_site += len(listing_links)
 
-                    # Find new jobs (not in gumtree_jobs.csv yet)
+                    # Find new jobs (not in gumtree_jobs.csv yet) - use ID for deduplication (titles repeat on Gumtree)
                     new_links = []
-                    for link in listing_links:
-                        # Use URL for deduplication (Gumtree has unique URLs)
-                        link_key = link.lower()
-                        if link_key not in existing_gumtree_jobs:
-                            new_links.append(link)
-                            existing_gumtree_jobs.add(link_key)
+                    skipped_count = 0
+                    for link_data in listing_links:
+                        url = link_data['url']
+                        title = link_data.get('title', '')
+                        job_id = job_id_from_url(url)
+                        
+                        # Check if we already have this job by ID
+                        if job_id in existing_gumtree_ids:
+                            skipped_count += 1
+                            if skipped_count <= 3:  # Show first 3 skipped for debugging
+                                print(f"  Duplicate skipped (ID {job_id}): {title[:50] if title else url[:50]}...")
+                            continue
+                        
+                        # New job - add to list and tracking set
+                        new_links.append(url)
+                        existing_gumtree_ids.add(job_id)
+                    
+                    if skipped_count > 3:
+                        print(f"  ... and {skipped_count - 3} more duplicates skipped")
 
                     current_total = existing_count_in_file + total_scraped
                     print(f"Progress: {current_total}/{target_count} jobs")

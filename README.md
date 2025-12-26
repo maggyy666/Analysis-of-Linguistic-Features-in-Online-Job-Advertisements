@@ -38,10 +38,10 @@ Oba scrapers zapisują dane w tym samym formacie CSV:
 
 ```bash
 # Instalacja zależności
-poetry install
+pip install -r requirements.txt
 
 # Instalacja przeglądarek Playwright
-poetry run playwright install
+playwright install
 ```
 
 ## Użycie
@@ -50,7 +50,7 @@ poetry run playwright install
 
 ```bash
 # Uruchomienie scrapera OLX
-poetry run python simple_scraper.py
+python simple_scraper.py
 ```
 
 ### Adzuna Scraper
@@ -72,7 +72,7 @@ poetry run python simple_scraper.py
 
 3. **Uruchom scraper:**
    ```bash
-   poetry run python adzuna_scraper.py
+   python adzuna_scraper.py
    ```
 
 Scraper pobiera oferty z kategorii nie-IT:
@@ -87,12 +87,12 @@ Scraper pobiera oferty z kategorii nie-IT:
 
 ```bash
 # Formatowanie kodu
-poetry run black .
-poetry run isort .
+black .
+isort .
 
 # Typy
-poetry run mypy .
+mypy .
 
 # Testy
-poetry run pytest
+pytest
 ```
