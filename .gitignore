@@ -158,3 +158,6 @@ data/
 # Logs
 logs/
 *.log
+
+en_postings.csv
+en_postings_clean_sample.csv
