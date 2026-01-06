@@ -1,98 +1,203 @@
-# Job Advertisement Scrapers
 
-Zestaw scraperów do pobierania ofert pracy z różnych źródeł:
-- **OLX.pl** - polskie oferty pracy (Playwright)
-- **Adzuna API** - angielskie oferty pracy (API)
+# Analysis of Linguistic Features in Online Job Advertisements (PL vs EN)
 
-## Funkcjonalności
+This project compares **Polish (PL)** and **English (EN)** job advertisements with a focus on:
+- frequent words/phrases and latent topics (unsupervised discovery),
+- “bucket” coverage (rule-based category flags built from phrases/signals),
+- linguistic/style features (length, punctuation, digits, ALL-CAPS, bulleting),
+- statistical testing of EN vs PL differences (including a balanced/downsampled mode).
 
-### OLX Scraper (`simple_scraper.py`)
-- Scraping listingu ofert pracy z OLX.pl
-- Ekstrakcja szczegółów każdej oferty
-- Stabilne selektory oparte na tekście
-- Rate limiting i progress tracking
-- Zapis danych do CSV (`jobs.csv`)
+---
 
-### Adzuna Scraper (`adzuna_scraper.py`)
-- Pobieranie angielskich ofert pracy przez Adzuna API
-- Filtrowanie ofert nie-IT (retail, warehouse, production, delivery, hospitality, cleaning)
-- Normalizacja danych do formatu OLX
-- Zapis danych do CSV (`jobs_en.csv`)
+## Data sources
 
-## Struktura danych
+### EN (LinkedIn Job Postings)
+Kaggle dataset:  
+`https://www.kaggle.com/datasets/arshkon/linkedin-job-postings`
 
-Oba scrapers zapisują dane w tym samym formacie CSV:
+### PL (OLX scraped)
+PL data comes from scraping OLX (stored locally in this repo).
 
-- `id` - unikalny identyfikator oferty
-- `url` - link do oferty
-- `title` - tytuł stanowiska
-- `company` - nazwa firmy
-- `salary` - wynagrodzenie (format zależny od źródła)
-- `location` - lokalizacja
-- `work_time` - wymiar pracy (pełny/niepełny etat)
-- `contract_type` - typ umowy
-- `scraped_at` - data i czas pobrania
-- `description` - pełny opis oferty
+---
 
-## Instalacja
+## Repository structure (key files)
 
-```bash
-# Instalacja zależności
-pip install -r requirements.txt
+- `clean_datasets.py`  
+  Cleans and standardizes raw PL/EN datasets so all later steps run on consistent columns.
+  Output: cleaned CSVs used by the pipeline.
 
-# Instalacja przeglądarek Playwright
-playwright install
-```
+- `en_dataset/`
+  - `en_postings_clean_sample.csv` — cleaned (optionally sampled) EN dataset.
 
-## Użycie
+- `pl_dataset/`
+  - `pl_postings_clean.csv` — cleaned PL dataset.
 
-### OLX Scraper
+- `sanity_checks/` (main analysis pipeline; console reports, optional markdown via `--out`)
+  - `step1_sanity.py`
+  - `step2_discover.py`
+  - `step3_buckets.py`
+  - `step4_linguistic_features.py`
+  - `step5_tests.py`
 
-```bash
-# Uruchomienie scrapera OLX
-python simple_scraper.py
-```
+> Note: the old `EDA/` directory was removed. Everything was moved into `sanity_checks/`.
+> The previous “step2” was removed and numbering was updated:
+> - `step2_discover` (previously step3)
+> - `step3_buckets` (previously step4)
+> - `step4_linguistic_features` (previously step5)
+> - `step5_tests` (previously step6)
 
-### Adzuna Scraper
+---
 
-1. **Uzyskaj klucze API:**
-   - Zarejestruj się na https://developer.adzuna.com/
-   - Utwórz aplikację i uzyskaj `APP_ID` oraz `APP_KEY`
+## Quick start
 
-2. **Ustaw zmienne środowiskowe:**
-   ```bash
-   # Windows (PowerShell)
-   $env:ADZUNA_APP_ID="your_app_id"
-   $env:ADZUNA_APP_KEY="your_app_key"
-   
-   # Linux/Mac
-   export ADZUNA_APP_ID="your_app_id"
-   export ADZUNA_APP_KEY="your_app_key"
-   ```
-
-3. **Uruchom scraper:**
-   ```bash
-   python adzuna_scraper.py
-   ```
-
-Scraper pobiera oferty z kategorii nie-IT:
-- Retail (shop assistant, cashier)
-- Warehouse (warehouse operative, picker packer)
-- Production (production worker, factory operative)
-- Delivery (delivery driver, courier)
-- Hospitality (kitchen assistant, bar staff)
-- Cleaning (cleaner, cleaning operative)
-
-## Development
+### 1) Clean datasets (PL/EN)
+Run separately for EN and PL:
 
 ```bash
-# Formatowanie kodu
-black .
-isort .
+python clean_datasets.py --en
+python clean_datasets.py --pl
+````
 
-# Typy
-mypy .
+**Goal:** produce standardized, analysis-ready CSVs (e.g., consistent `description` and grouping columns such as
+`formatted_work_type`, `formatted_experience_level` (EN) / `contract_type_pl` (PL)).
 
-# Testy
-pytest
+---
+
+## Pipeline: `sanity_checks/`
+
+Move into the pipeline folder:
+
+```bash
+cd sanity_checks
 ```
+
+### Step 1 — sanity checks
+
+```bash
+python step1_sanity.py --en
+python step1_sanity.py --pl
+```
+
+**What it does:**
+
+* quick validation after cleaning,
+* checks missing values / basic distributions,
+* confirms grouping columns exist and look reasonable (work type, experience level, contract type).
+
+**Why it matters:** prevents “garbage in → garbage out” before running heavier analyses.
+
+---
+
+### Step 2 — unsupervised discovery (terms/phrases/topics)
+
+```bash
+python step2_discover.py --en
+python step2_discover.py --pl
+```
+
+**What it does (high-level):**
+
+* most common terms (document frequency),
+* most characteristic terms (mean TF-IDF),
+* most characteristic phrases (2–3 grams, mean TF-IDF),
+* topics via NMF on TF-IDF (top terms per topic),
+* terms differentiating selected groups (e.g., `formatted_work_type`, chi²).
+
+**What you get:** an interpretable “content map” of postings (themes + strong lexical signals), useful for defining buckets.
+
+---
+
+### Step 3 — bucket coverage (rule-based categories)
+
+```bash
+python step3_buckets.py --en
+python step3_buckets.py --pl
+```
+
+**What it does:**
+
+* defines buckets for EN/PL as sets of phrases/regex signals,
+* computes overall bucket coverage,
+* breaks coverage down by key groups:
+
+  * EN: `formatted_work_type`, optionally + `formatted_experience_level`
+  * PL: `formatted_work_type`, optionally + `contract_type_pl`
+
+**What you get:** category prevalence (benefits, education, driving license, pay, etc.) and how it varies across job types/contract forms.
+
+---
+
+### Step 4 — linguistic features (style/format metrics)
+
+```bash
+python step4_linguistic_features.py --en
+python step4_linguistic_features.py --pl
+```
+
+**What it computes (examples):**
+
+* `char_len`, `word_count`, `sentence_count`, `avg_words_per_sentence`
+* punctuation rates per 1k chars: `exclam_per_1k`, `question_per_1k`
+* digit usage: `digit_share`
+* ALL-CAPS usage: `caps_word_share`
+* bullet/list intensity: `bullet_markers_per_1k`
+
+**Report includes:**
+
+* distribution summary (quantiles),
+* group means (work type / experience / contract),
+* mean feature profiles for postings matching each bucket.
+
+**What you get:** a measurable description of posting style (length, structure, formality, list formatting, etc.).
+
+---
+
+### Step 5 — statistical tests (EN vs PL)
+
+```bash
+python step5_tests.py
+```
+
+**What it does:**
+
+* loads both datasets (EN + PL),
+* computes the same feature set as Step 4,
+* runs **Mann–Whitney U** per metric (non-parametric),
+* reports effect size: rank-biserial correlation `r_rb` (≈ Cliff’s delta),
+* applies multiple-comparisons correction: **Benjamini–Hochberg FDR** (`q_fdr`).
+
+**Balanced mode (recommended for defensible comparison):**
+
+```bash
+python step5_tests.py --downsample-en 1212 --seed 42
+```
+
+**Balanced mode + repeats (effect stability):**
+
+```bash
+python step5_tests.py --downsample-en 1212 --repeats 50 --seed 42
+```
+
+**What you get:** a clear answer whether EN and PL differ significantly and by how much (plus robustness when sample sizes are matched).
+
+---
+
+## Reports / outputs
+
+Most scripts print results to stdout.
+If a script supports `--out`, you can save a single markdown report, e.g.:
+
+```bash
+python step4_linguistic_features.py --en --out report_step4_en.md
+```
+
+---
+
+## Interpretation (one-liners)
+
+* Step 2: *what is being said* (terms/phrases/topics)
+* Step 3: *how often key motifs appear* (bucket coverage + group breakdown)
+* Step 4: *how it is written* (style/format features)
+* Step 5: *whether EN vs PL differences are statistically real and how strong* (incl. balanced comparison)
+
+---
