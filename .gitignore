@@ -152,9 +152,8 @@ test-results/
 
 # Data files
 data/
-*.json
 *.xlsx
-
+model_output/*.json
 # Logs
 logs/
 *.log

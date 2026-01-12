@@ -1,0 +1,93 @@
+[
+    {
+      "id": "EN_00_internship_student",
+      "expected": "intern",
+      "title": "Software Engineering Intern",
+      "description": "Internship role for students. No prior commercial experience required. You will learn Git, write simple scripts, and work with a mentor."
+    },
+    {
+      "id": "EN_01_entry_0_1_year",
+      "expected": "junior",
+      "title": "Junior QA Engineer",
+      "description": "0-1 years of experience. Basic understanding of testing, writing test cases, and bug reporting. Nice to have: SQL, Postman."
+    },
+    {
+      "id": "EN_02_junior_1_year",
+      "expected": "junior",
+      "title": "Junior Backend Engineer",
+      "description": "1 year of experience required. Build REST APIs, write unit tests, and work with a senior engineer. Python/Django or FastAPI."
+    },
+    {
+      "id": "EN_03_years_3_associate",
+      "expected": "mid",
+      "title": "Backend Engineer",
+      "description": "3+ years of experience. Build REST APIs, write tests, work with CI/CD. Familiar with Docker and SQL."
+    },
+    {
+      "id": "EN_04_mid_2_4_years",
+      "expected": "mid",
+      "title": "Software Engineer",
+      "description": "2-4 years of experience. Own features end-to-end, implement APIs, review code, collaborate with product and QA."
+    },
+    {
+      "id": "EN_05_senior_5_plus",
+      "expected": "senior",
+      "title": "Senior Software Engineer",
+      "description": "5+ years of experience. Drive technical decisions, mentor others, design scalable services, and lead complex deliveries."
+    },
+    {
+      "id": "EN_06_senior_no_years_architecture",
+      "expected": "senior",
+      "title": "Senior Platform Engineer",
+      "description": "Strong background in distributed systems. Design and operate production infrastructure, observability, incident response, and performance tuning."
+    },
+    {
+      "id": "EN_07_lead_hands_on",
+      "expected": "lead",
+      "title": "Tech Lead (Backend)",
+      "description": "Lead a small team (4-6 engineers). Set coding standards, review architecture, plan sprints. Still hands-on: implement critical services and guide design."
+    },
+    {
+      "id": "EN_08_manager_people",
+      "expected": "manager",
+      "title": "Engineering Manager",
+      "description": "People management role: hiring, performance reviews, career development, stakeholder communication. You may code occasionally but the focus is leading people."
+    },
+    {
+      "id": "EN_09_conflict_junior_title_senior_req",
+      "expected": "senior",
+      "title": "Junior DevOps Engineer",
+      "description": "We are looking for 6+ years of experience in Kubernetes, Terraform, AWS, and on-call ownership. Must design production-ready systems."
+    },
+    {
+      "id": "EN_10_conflict_senior_title_low_years",
+      "expected": "mid",
+      "title": "Senior Data Analyst",
+      "description": "2 years of experience required. Build dashboards, write SQL, basic Python. Work with stakeholders under guidance."
+    },
+    {
+      "id": "EN_11_manager_vs_lead_ambiguous",
+      "expected": "manager",
+      "title": "Team Lead / Engineering Manager",
+      "description": "Manage a team of engineers, run 1:1s, handle planning and delivery. Coordinate with product and leadership. Some technical guidance and reviews."
+    },
+    {
+      "id": "EN_12_mid_keywords_no_years",
+      "expected": "mid",
+      "title": "Backend Engineer",
+      "description": "Own services in production, write tests, improve reliability, participate in on-call rotation. Comfortable with code reviews and debugging."
+    },
+    {
+      "id": "EN_13_internship_paid",
+      "expected": "intern",
+      "title": "Paid Internship - Data Science",
+      "description": "Student internship. Learn pandas, basic ML, data cleaning. Mentored work, no previous industry experience required."
+    },
+    {
+      "id": "EN_14_lead_architecture_ownership",
+      "expected": "lead",
+      "title": "Lead Software Engineer",
+      "description": "Lead technical direction for a product area. Mentor senior engineers, define architecture, coordinate cross-team changes, ensure delivery quality."
+    }
+  ]
+  

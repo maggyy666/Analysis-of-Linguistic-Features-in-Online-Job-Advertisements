@@ -1,0 +1,87 @@
+[
+    {
+      "id": "PL_00_staz_student",
+      "expected": "intern",
+      "title": "Stażysta / Stażystka – Programowanie",
+      "description": "Staż dla studentów. Nie wymagamy doświadczenia komercyjnego. Nauczysz się Gita, podstaw API i pracy w zespole z mentorem."
+    },
+    {
+      "id": "PL_01_praktyki_zero_dosw",
+      "expected": "intern",
+      "title": "Praktykant IT",
+      "description": "Praktyki wakacyjne. Mile widziana chęć nauki, podstawy Pythona/SQL. Brak wymaganego doświadczenia."
+    },
+    {
+      "id": "PL_02_junior_0_1_rok",
+      "expected": "junior",
+      "title": "Junior Tester Manualny",
+      "description": "0–1 rok doświadczenia. Pisanie przypadków testowych, zgłaszanie błędów, podstawy narzędzi typu Jira. Mile widziany SQL."
+    },
+    {
+      "id": "PL_03_junior_1_rok_backend",
+      "expected": "junior",
+      "title": "Junior Backend Developer",
+      "description": "Minimum 1 rok doświadczenia komercyjnego. Tworzenie prostych endpointów REST, testy jednostkowe, podstawy Dockera."
+    },
+    {
+      "id": "PL_04_mid_2_4_lata",
+      "expected": "mid",
+      "title": "Programista Python",
+      "description": "2–4 lata doświadczenia. Samodzielna realizacja zadań, code review, integracje API, praca z bazą danych i CI/CD."
+    },
+    {
+      "id": "PL_05_mid_3_plus",
+      "expected": "mid",
+      "title": "Backend Engineer",
+      "description": "3+ lata doświadczenia. Budowa REST API, testy, praca z CI/CD, utrzymanie usług w produkcji, debugowanie."
+    },
+    {
+      "id": "PL_06_senior_5_plus",
+      "expected": "senior",
+      "title": "Senior Software Engineer",
+      "description": "5+ lat doświadczenia. Projektowanie rozwiązań, mentoring, optymalizacja wydajności, odpowiedzialność za kluczowe komponenty."
+    },
+    {
+      "id": "PL_07_senior_bez_lat_architektura",
+      "expected": "senior",
+      "title": "Senior Platform Engineer",
+      "description": "Doświadczenie w systemach rozproszonych, obserwowalności i utrzymaniu produkcji. Projektowanie i stabilność systemów, incydenty, tuning."
+    },
+    {
+      "id": "PL_08_lead_team_lead_hands_on",
+      "expected": "lead",
+      "title": "Tech Lead (Backend)",
+      "description": "Prowadzenie techniczne zespołu 4–6 osób. Standardy kodu, architektura, planowanie, mentoring. Nadal praca hands-on przy krytycznych modułach."
+    },
+    {
+      "id": "PL_09_manager_people",
+      "expected": "manager",
+      "title": "Engineering Manager",
+      "description": "Zarządzanie zespołem: rekrutacja, 1:1, rozwój, oceny, komunikacja ze stakeholderami. Kodowanie okazjonalnie, priorytet: ludzie i delivery."
+    },
+    {
+      "id": "PL_10_konflikt_junior_tytul_senior_wymagania",
+      "expected": "senior",
+      "title": "Junior DevOps",
+      "description": "Wymagane 6+ lat doświadczenia z Kubernetes, Terraform i AWS. Projektowanie infrastruktury, dyżury on-call, odpowiedzialność za produkcję."
+    },
+    {
+      "id": "PL_11_konflikt_senior_tytul_2_lata",
+      "expected": "mid",
+      "title": "Senior Analityk Danych",
+      "description": "Wymagane 2 lata doświadczenia. Raporty, dashboardy, SQL, podstawy Pythona. Praca pod opieką starszych członków zespołu."
+    },
+    {
+      "id": "PL_12_mid_production_oncall",
+      "expected": "mid",
+      "title": "Inżynier Backend",
+      "description": "Utrzymanie usług na produkcji, poprawa niezawodności, dyżury on-call, code review, samodzielne dowożenie funkcjonalności."
+    },
+    {
+      "id": "PL_13_lead_architektura_obszar",
+      "expected": "lead",
+      "title": "Lead Software Engineer",
+      "description": "Odpowiedzialność za kierunek techniczny obszaru. Decyzje architektoniczne, koordynacja zmian między zespołami, mentoring seniorów."
+    }
+  ]
+  
