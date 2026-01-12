@@ -22,6 +22,8 @@ pluggy==1.6.0
 pyee==13.0.0
 Pygments==2.19.2
 pytest==8.4.2
+pyarrow==22.0.0
+PyQt5==5.15.10
 python-dateutil==2.9.0.post0
 pytokens==0.1.10
 pytz==2025.2

@@ -161,3 +161,6 @@ logs/
 
 en_postings.csv
 en_postings_clean_sample.csv
+
+model_output/*.csv
+en_dataset/*.csv
