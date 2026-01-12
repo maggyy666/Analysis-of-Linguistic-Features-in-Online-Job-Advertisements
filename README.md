@@ -1,203 +1,277 @@
 
-# Analysis of Linguistic Features in Online Job Advertisements (PL vs EN)
+# Job Posting Analysis Pipeline (PyQt5)
 
-This project compares **Polish (PL)** and **English (EN)** job advertisements with a focus on:
-- frequent words/phrases and latent topics (unsupervised discovery),
-- “bucket” coverage (rule-based category flags built from phrases/signals),
-- linguistic/style features (length, punctuation, digits, ALL-CAPS, bulleting),
-- statistical testing of EN vs PL differences (including a balanced/downsampled mode).
+A desktop (PyQt5) application that runs an end-to-end pipeline for job posting datasets:
+**data cleaning → train/val/test split → baseline model training → evaluation dashboards → interactive “Try it out” predictions**.
 
----
-
-## Data sources
-
-### EN (LinkedIn Job Postings)
-Kaggle dataset:  
-`https://www.kaggle.com/datasets/arshkon/linkedin-job-postings`
-
-### PL (OLX scraped)
-PL data comes from scraping OLX (stored locally in this repo).
+The app supports **EN (English)** and **PL (Polish)** workflows and stores all artifacts (splits, models, metrics, predictions) under `model_output/`.
 
 ---
 
-## Repository structure (key files)
+## Features
 
-- `clean_datasets.py`  
-  Cleans and standardizes raw PL/EN datasets so all later steps run on consistent columns.
-  Output: cleaned CSVs used by the pipeline.
+### 1) Data Processing & Model Training (GUI)
+- Run dataset cleaning scripts for **EN** and **PL**
+- Create **stratified** train/val/test split
+- Train a baseline model (TF-IDF + LinearSVC)
+- View logs directly inside the GUI (runs scripts in a background thread to keep UI responsive)
 
-- `en_dataset/`
-  - `en_postings_clean_sample.csv` — cleaned (optionally sampled) EN dataset.
+### 2) Try It Out (Interactive Predictor)
+- Select **EN/PL model** from dropdown (loads the correct `.joblib`)
+- Paste a job title + description and predict experience level
+- Shows **Top-K decision scores** (LinearSVC decision function)
+- Loads curated **test prompts** from JSON (`test_prompts/en_tests.json`, `test_prompts/pl_tests.json`)
 
-- `pl_dataset/`
-  - `pl_postings_clean.csv` — cleaned PL dataset.
+> Note: “Top 3 Predictions (decision scores)” are **not probabilities**. These are SVM margins (can be negative).
 
-- `sanity_checks/` (main analysis pipeline; console reports, optional markdown via `--out`)
-  - `step1_sanity.py`
-  - `step2_discover.py`
-  - `step3_buckets.py`
-  - `step4_linguistic_features.py`
-  - `step5_tests.py`
+### 3) Dataset Statistics Dashboard
+- Loads cleaned datasets and visualizes:
+  - missingness by column
+  - class distribution
+  - text length distribution
+  - work type / remote allowed distribution
+  - salary distribution (where available)
 
-> Note: the old `EDA/` directory was removed. Everything was moved into `sanity_checks/`.
-> The previous “step2” was removed and numbering was updated:
-> - `step2_discover` (previously step3)
-> - `step3_buckets` (previously step4)
-> - `step4_linguistic_features` (previously step5)
-> - `step5_tests` (previously step6)
+### 4) Model Performance Dashboard
+- Loads saved `metrics_*.json` + prediction CSVs and visualizes:
+  - Test/Val metrics (Accuracy, Macro F1, Weighted F1)
+  - Confusion matrix (seaborn if installed; otherwise matplotlib)
+  - Per-class F1/Recall with support counts
+  - CV stability metrics (if present)
+  - Error table with filters (All / Errors / Correct)
 
 ---
 
-## Quick start
+## Project Structure (expected)
 
-### 1) Clean datasets (PL/EN)
-Run separately for EN and PL:
+```
 
-```bash
-python clean_datasets.py --en
-python clean_datasets.py --pl
+.
+├─ app.py
+├─ data_processing/
+│  ├─ clean_en_dataset.py
+│  └─ clean_pl_dataset.py
+├─ en_dataset/
+│  └─ en_jobs_clean.csv              # produced by cleaning
+├─ pl_dataset/
+│  └─ pl_jobs_clean.csv              # produced by cleaning
+├─ model/
+│  ├─ make_train_split.py            # creates train/val/test CSVs
+│  └─ train_baseline_tfidf.py         # trains baseline + saves metrics
+├─ model_output/
+│  ├─ en_train.csv / en_val.csv / en_test.csv
+│  ├─ pl_train.csv / pl_val.csv / pl_test.csv
+│  ├─ baseline_tfidf_linearsvc.joblib
+│  ├─ baseline_tfidf_linearsvc_pl.joblib
+│  ├─ baseline_val_predictions.csv
+│  ├─ baseline_test_predictions.csv
+│  ├─ baseline_val_predictions_pl.csv
+│  ├─ baseline_test_predictions_pl.csv
+│  ├─ metrics_en.json / metrics_pl.json
+│  └─ confusion_en.csv / confusion_pl.csv
+└─ test_prompts/
+├─ en_tests.json
+└─ pl_tests.json
+
 ````
 
-**Goal:** produce standardized, analysis-ready CSVs (e.g., consistent `description` and grouping columns such as
-`formatted_work_type`, `formatted_experience_level` (EN) / `contract_type_pl` (PL)).
+---
+
+## Requirements
+
+- Python 3.10+ recommended
+- PyQt5
+- scikit-learn
+- pandas, numpy
+- matplotlib
+- joblib
+- seaborn (optional, improves confusion matrix plots)
+
+Example install (adjust to your environment):
+```bash
+pip install pyqt5 scikit-learn pandas numpy matplotlib joblib seaborn
+````
 
 ---
 
-## Pipeline: `sanity_checks/`
+## Running the App
 
-Move into the pipeline folder:
-
-```bash
-cd sanity_checks
-```
-
-### Step 1 — sanity checks
+From the repository root:
 
 ```bash
-python step1_sanity.py --en
-python step1_sanity.py --pl
+python app.py
 ```
 
-**What it does:**
+You’ll get a GUI with three main views:
 
-* quick validation after cleaning,
-* checks missing values / basic distributions,
-* confirms grouping columns exist and look reasonable (work type, experience level, contract type).
-
-**Why it matters:** prevents “garbage in → garbage out” before running heavier analyses.
+* **Main** (Data Processing & Model Training)
+* **Try it out**
+* **Dataset Statistics**
 
 ---
 
-### Step 2 — unsupervised discovery (terms/phrases/topics)
+## Typical Workflow (EN / PL)
 
-```bash
-python step2_discover.py --en
-python step2_discover.py --pl
-```
+### Step 1 — Clean dataset
 
-**What it does (high-level):**
+In **Main → Data Processing**:
 
-* most common terms (document frequency),
-* most characteristic terms (mean TF-IDF),
-* most characteristic phrases (2–3 grams, mean TF-IDF),
-* topics via NMF on TF-IDF (top terms per topic),
-* terms differentiating selected groups (e.g., `formatted_work_type`, chi²).
+* Click **Clean EN Dataset** or **Clean PL Dataset**
 
-**What you get:** an interpretable “content map” of postings (themes + strong lexical signals), useful for defining buckets.
+This is expected to produce:
 
----
+* `en_dataset/en_jobs_clean.csv`
+* `pl_dataset/pl_jobs_clean.csv`
 
-### Step 3 — bucket coverage (rule-based categories)
+### Step 2 — Create train/val/test split
 
-```bash
-python step3_buckets.py --en
-python step3_buckets.py --pl
-```
+In **Main → Model Training → Train Split**:
 
-**What it does:**
+* Choose language (EN/PL)
+* Click **Create Train/Val/Test Split**
 
-* defines buckets for EN/PL as sets of phrases/regex signals,
-* computes overall bucket coverage,
-* breaks coverage down by key groups:
+Outputs:
 
-  * EN: `formatted_work_type`, optionally + `formatted_experience_level`
-  * PL: `formatted_work_type`, optionally + `contract_type_pl`
+* `model_output/{lang}_train.csv`
+* `model_output/{lang}_val.csv`
+* `model_output/{lang}_test.csv`
 
-**What you get:** category prevalence (benefits, education, driving license, pay, etc.) and how it varies across job types/contract forms.
+### Step 3 — Train baseline model
 
----
+In **Main → Model Training → Train Baseline Model**:
 
-### Step 4 — linguistic features (style/format metrics)
+* Choose language (EN/PL)
+* Click **Train Baseline Model**
 
-```bash
-python step4_linguistic_features.py --en
-python step4_linguistic_features.py --pl
-```
+Outputs:
 
-**What it computes (examples):**
+* `.joblib` model file in `model_output/`
+* prediction CSVs for val/test
+* `metrics_{lang}.json` and `confusion_{lang}.csv`
 
-* `char_len`, `word_count`, `sentence_count`, `avg_words_per_sentence`
-* punctuation rates per 1k chars: `exclam_per_1k`, `question_per_1k`
-* digit usage: `digit_share`
-* ALL-CAPS usage: `caps_word_share`
-* bullet/list intensity: `bullet_markers_per_1k`
+### Step 4 — Inspect performance
 
-**Report includes:**
+In **Main → Model Performance**:
 
-* distribution summary (quantiles),
-* group means (work type / experience / contract),
-* mean feature profiles for postings matching each bucket.
+* Switch language (EN/PL)
+* Review metrics, confusion matrix, per-class plots, error table
 
-**What you get:** a measurable description of posting style (length, structure, formality, list formatting, etc.).
+### Step 5 — Try predictions
+
+In **Try it out**:
+
+* Choose language (EN/PL)
+* Pick a test case from dropdown (auto-fills inputs), or paste your own text
+* Click **Predict Experience Level**
 
 ---
 
-### Step 5 — statistical tests (EN vs PL)
+## Test Prompts Format
 
-```bash
-python step5_tests.py
+The GUI loads test prompts from:
+
+* `test_prompts/en_tests.json`
+* `test_prompts/pl_tests.json`
+
+Expected JSON format: an **array of objects**:
+
+```json
+[
+  {
+    "id": "EN_03_years_3_associate",
+    "expected": "mid",
+    "title": "Backend Engineer",
+    "description": "3+ years of experience. Build REST APIs, write tests, work with CI/CD."
+  }
+]
 ```
 
-**What it does:**
-
-* loads both datasets (EN + PL),
-* computes the same feature set as Step 4,
-* runs **Mann–Whitney U** per metric (non-parametric),
-* reports effect size: rank-biserial correlation `r_rb` (≈ Cliff’s delta),
-* applies multiple-comparisons correction: **Benjamini–Hochberg FDR** (`q_fdr`).
-
-**Balanced mode (recommended for defensible comparison):**
-
-```bash
-python step5_tests.py --downsample-en 1212 --seed 42
-```
-
-**Balanced mode + repeats (effect stability):**
-
-```bash
-python step5_tests.py --downsample-en 1212 --repeats 50 --seed 42
-```
-
-**What you get:** a clear answer whether EN and PL differ significantly and by how much (plus robustness when sample sizes are matched).
+In the GUI dropdown, each case displays as:
+`<id> (expected: <expected>)`
 
 ---
 
-## Reports / outputs
+## How the Baseline Works (high level)
 
-Most scripts print results to stdout.
-If a script supports `--out`, you can save a single markdown report, e.g.:
+### Training data
+
+The model training pipeline expects a single `text` feature. Split scripts typically build it as:
+
+* `title + "\n" + description_clean`
+
+### Models
+
+* **EN baseline**: word TF-IDF (1–2 grams) + LinearSVC (`class_weight="balanced"`)
+* **PL baseline**: word TF-IDF + char n-grams (useful for inflection) + LinearSVC (`class_weight="balanced"`)
+
+### Saved artifacts
+
+* Model: `model_output/baseline_tfidf_linearsvc*.joblib`
+* Predictions: `baseline_*_predictions*.csv`
+* Metrics for GUI: `metrics_en.json`, `metrics_pl.json`
+* Confusion matrices for GUI: `confusion_en.csv`, `confusion_pl.csv`
+
+---
+
+## Important Notes / Known Caveats
+
+1. **Decision scores are not probabilities**
+   The “Top 3 Predictions” shown in the UI are `LinearSVC.decision_function` values (margins). They can be negative and should not be displayed as `%`.
+
+2. **Keep inference text consistent with training**
+   In `TryItOutView.predict()`, the app currently builds input as:
+   `title + "\n" + description + "\n" + YEARS_BUCKET`
+
+If your training data **does not include** that bucket token in `text`, predictions can degrade.
+Best practice: ensure the training pipeline and inference pipeline build `text` in the **same format**.
+
+3. **Small PL dataset = unstable metrics**
+   For very small PL training sizes, macro-F1 can swing a lot and minority classes may be dropped by the splitter (rare-class filtering).
+
+4. **Dataset upload in the UI**
+   The “Upload Dataset” section currently selects a file path for convenience, but cleaning scripts are executed from fixed paths (e.g., `en_dataset/`, `pl_dataset/`). If you want true upload/import, wire the selected file into the cleaning stage.
+
+---
+
+## CLI (optional)
+
+You can run the pipeline without the GUI:
 
 ```bash
-python step4_linguistic_features.py --en --out report_step4_en.md
+# Clean datasets
+python data_processing/clean_en_dataset.py
+python data_processing/clean_pl_dataset.py
+
+# Create splits
+python model/make_train_split.py en
+python model/make_train_split.py pl
+
+# Train baseline
+python model/train_baseline_tfidf.py en
+python model/train_baseline_tfidf.py pl
 ```
 
 ---
 
-## Interpretation (one-liners)
+## Troubleshooting
 
-* Step 2: *what is being said* (terms/phrases/topics)
-* Step 3: *how often key motifs appear* (bucket coverage + group breakdown)
-* Step 4: *how it is written* (style/format features)
-* Step 5: *whether EN vs PL differences are statistically real and how strong* (incl. balanced comparison)
+* **“Script Not Found”**
+  Ensure `data_processing/` and `model/` scripts exist at the expected paths.
+
+* **Model not loading in “Try it out”**
+  Train the baseline first, or place a compatible `.joblib` at:
+
+  * `model_output/baseline_tfidf_linearsvc.joblib` (EN)
+  * `model_output/baseline_tfidf_linearsvc_pl.joblib` (PL)
+
+* **Confusion matrix plot looks basic**
+  Install seaborn:
+
+  ```bash
+  pip install seaborn
+  ```
+
+* **Weird predictions for obvious “2 years” cases**
+  Verify that inference text formatting matches training text formatting (see “Known Caveats”).
 
 ---
