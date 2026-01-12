@@ -25,9 +25,16 @@ from PyQt5.QtWidgets import (
     QLabel, QTextEdit, QPushButton, QMessageBox, QFileDialog,
     QStackedWidget, QListWidget, QListWidgetItem, QFormLayout,
     QLineEdit, QGroupBox, QScrollArea, QFrame, QSplitter, QGridLayout,
-    QSizePolicy
+    QSizePolicy, QComboBox
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QFont
+import json
+try:
+    import seaborn as sns
+    HAS_SEABORN = True
+except ImportError:
+    HAS_SEABORN = False
 from PyQt5.QtGui import QFont, QIcon
 
 MODEL_PATH = Path("model_output/baseline_tfidf_linearsvc.joblib")
@@ -96,6 +103,10 @@ class MainView(QWidget):
         model_view = self.create_model_training_view()
         self.content_stack.addWidget(model_view)
         
+        # Model Performance view
+        self.model_perf_view = ModelPerformanceView()
+        self.content_stack.addWidget(self.model_perf_view)
+        
         content_layout.addWidget(self.content_stack)
         content_layout.addStretch()
         
@@ -155,7 +166,8 @@ class MainView(QWidget):
         
         categories = [
             "Data Processing",
-            "Model Training"
+            "Model Training",
+            "Model Performance"
         ]
         
         for cat in categories:
@@ -321,11 +333,22 @@ class MainView(QWidget):
         
         split_info = QLabel(
             "Create train/validation/test splits from cleaned dataset.\n"
-            "Output: en_train.csv, en_val.csv, en_test.csv"
+            "Output: {lang}_train.csv, {lang}_val.csv, {lang}_test.csv"
         )
         split_info.setWordWrap(True)
         split_info.setStyleSheet("color: #5c6bc0; padding: 5px;")
         split_layout.addWidget(split_info)
+        
+        # Language selector for split
+        split_lang_layout = QHBoxLayout()
+        split_lang_label = QLabel("Dataset:")
+        split_lang_label.setStyleSheet("font-weight: bold; color: #1a237e;")
+        self.split_lang_combo = QComboBox()
+        self.split_lang_combo.addItems(["EN (English)", "PL (Polish)"])
+        split_lang_layout.addWidget(split_lang_label)
+        split_lang_layout.addWidget(self.split_lang_combo)
+        split_lang_layout.addStretch()
+        split_layout.addLayout(split_lang_layout)
         
         self.split_btn = QPushButton("Create Train/Val/Test Split")
         self.split_btn.clicked.connect(self.create_train_split)
@@ -353,6 +376,17 @@ class MainView(QWidget):
         baseline_info.setStyleSheet("color: #5c6bc0; padding: 5px;")
         baseline_layout.addWidget(baseline_info)
         
+        # Language selector for training
+        baseline_lang_layout = QHBoxLayout()
+        baseline_lang_label = QLabel("Dataset:")
+        baseline_lang_label.setStyleSheet("font-weight: bold; color: #1a237e;")
+        self.baseline_lang_combo = QComboBox()
+        self.baseline_lang_combo.addItems(["EN (English)", "PL (Polish)"])
+        baseline_lang_layout.addWidget(baseline_lang_label)
+        baseline_lang_layout.addWidget(self.baseline_lang_combo)
+        baseline_lang_layout.addStretch()
+        baseline_layout.addLayout(baseline_lang_layout)
+        
         self.baseline_btn = QPushButton("Train Baseline Model")
         self.baseline_btn.clicked.connect(self.train_baseline)
         baseline_layout.addWidget(self.baseline_btn)
@@ -379,11 +413,14 @@ class MainView(QWidget):
             )
             return
         
+        # Get selected language
+        lang = "en" if self.split_lang_combo.currentIndex() == 0 else "pl"
+        
         self.split_btn.setEnabled(False)
         self.split_output.clear()
-        self.split_output.append("Creating train/val/test split...")
+        self.split_output.append(f"Creating train/val/test split for {lang.upper()}...")
         
-        self.split_thread = ProcessThread(script_path)
+        self.split_thread = ProcessThread(script_path, args=[lang])
         self.split_thread.finished.connect(self.on_split_finished)
         self.split_thread.start()
     
@@ -409,11 +446,14 @@ class MainView(QWidget):
             )
             return
         
+        # Get selected language
+        lang = "en" if self.baseline_lang_combo.currentIndex() == 0 else "pl"
+        
         self.baseline_btn.setEnabled(False)
         self.baseline_output.clear()
-        self.baseline_output.append("Training baseline model...")
+        self.baseline_output.append(f"Training baseline model for {lang.upper()}...")
         
-        self.baseline_thread = ProcessThread(script_path)
+        self.baseline_thread = ProcessThread(script_path, args=[lang])
         self.baseline_thread.finished.connect(self.on_baseline_finished)
         self.baseline_thread.start()
     
@@ -435,8 +475,11 @@ class TryItOutView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.model = None
+        self.lang = "en"  # Default language
+        self.test_cases = {}  # Store parsed test cases
         self.init_ui()
         self.load_model()
+        self.load_test_cases()  # Load test cases after UI is initialized
     
     def init_ui(self):
         layout = QVBoxLayout()
@@ -451,10 +494,40 @@ class TryItOutView(QWidget):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
         
+        # Language selector
+        lang_layout = QHBoxLayout()
+        lang_label = QLabel("Model Language:")
+        lang_label.setFont(QFont("Arial", 10, QFont.Bold))
+        lang_label.setStyleSheet("color: #1a237e;")
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItems(["EN (English)", "PL (Polish)"])
+        self.lang_combo.setCurrentIndex(0)  # Default to EN
+        self.lang_combo.currentIndexChanged.connect(self.on_lang_changed)
+        lang_layout.addWidget(lang_label)
+        lang_layout.addWidget(self.lang_combo)
+        lang_layout.addStretch()
+        layout.addLayout(lang_layout)
+        
         # Model status
         self.status_label = QLabel("Model: Not loaded")
         self.status_label.setStyleSheet("color: #7986cb; font-weight: bold; padding: 5px;")
         layout.addWidget(self.status_label)
+        
+        # Test Prompts section
+        test_prompts_group = QGroupBox("Test Prompts")
+        test_prompts_group.setFont(QFont("Arial", 10, QFont.Bold))
+        test_prompts_layout = QVBoxLayout()
+        test_prompts_group.setLayout(test_prompts_layout)
+        
+        test_prompts_label = QLabel("Select a test case:")
+        test_prompts_label.setStyleSheet("font-weight: bold; color: #1a237e;")
+        test_prompts_layout.addWidget(test_prompts_label)
+        
+        self.test_cases_combo = QComboBox()
+        self.test_cases_combo.currentIndexChanged.connect(self.on_test_case_selected)
+        test_prompts_layout.addWidget(self.test_cases_combo)
+        
+        layout.addWidget(test_prompts_group)
         
         # Input fields
         title_input_label = QLabel("Job Title:")
@@ -516,21 +589,94 @@ class TryItOutView(QWidget):
         load_model_btn.clicked.connect(self.load_model_from_file)
         layout.addWidget(load_model_btn)
     
+    def parse_test_prompts(self, lang):
+        """Parse test prompts JSON file for given language."""
+        file_path = Path(f"test_prompts/{lang}_tests.json")
+        test_cases = {}
+        
+        if not file_path.exists():
+            return test_cases
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # JSON is an array of objects with: id, expected, title, description
+            for item in data:
+                case_id = item.get("id", "")
+                if case_id:
+                    test_cases[case_id] = {
+                        "title": item.get("title", ""),
+                        "desc": item.get("description", ""),
+                        "expected": item.get("expected", "")
+                    }
+        except Exception as e:
+            print(f"Error parsing test prompts JSON: {e}")
+        
+        return test_cases
+    
+    def load_test_cases(self):
+        """Load test cases for current language."""
+        self.test_cases = self.parse_test_prompts(self.lang)
+        
+        # Update combo box
+        self.test_cases_combo.clear()
+        if self.test_cases:
+            for case_name in sorted(self.test_cases.keys()):
+                # Create display name: case_name + expected if available
+                case_data = self.test_cases[case_name]
+                display_name = case_name
+                if case_data.get("expected"):
+                    display_name += f" (expected: {case_data['expected']})"
+                self.test_cases_combo.addItem(display_name, case_name)
+        else:
+            self.test_cases_combo.addItem("No test cases available", None)
+    
+    def on_test_case_selected(self, index):
+        """Handle test case selection - fill form instantly."""
+        if index < 0 or not self.test_cases:
+            return
+        
+        case_name = self.test_cases_combo.itemData(index)
+        if not case_name or case_name not in self.test_cases:
+            return
+        
+        case_data = self.test_cases[case_name]
+        
+        # Fill form instantly
+        self.title_input.setPlainText(case_data.get("title", ""))
+        self.desc_input.setPlainText(case_data.get("desc", ""))
+    
+    def on_lang_changed(self, index):
+        """Handle language change."""
+        self.lang = "en" if index == 0 else "pl"
+        self.load_model()
+        self.load_test_cases()  # Reload test cases for new language
+    
     def load_model(self):
-        """Load model from default path."""
+        """Load model from default path based on selected language."""
         import joblib
-        if MODEL_PATH.exists():
+        
+        # Determine model path based on language
+        if self.lang == "pl":
+            model_path = Path("model_output/baseline_tfidf_linearsvc_pl.joblib")
+        else:
+            model_path = Path("model_output/baseline_tfidf_linearsvc.joblib")
+        
+        if model_path.exists():
             try:
-                self.model = joblib.load(MODEL_PATH)
-                self.status_label.setText(f"Model: Loaded from {MODEL_PATH}")
+                self.model = joblib.load(model_path)
+                self.status_label.setText(f"Model ({self.lang.upper()}): Loaded from {model_path}")
                 self.status_label.setStyleSheet("color: #283593; font-weight: bold; padding: 5px;")
                 self.predict_btn.setEnabled(True)
             except Exception as e:
-                self.status_label.setText(f"Model: Error loading - {str(e)}")
+                self.status_label.setText(f"Model ({self.lang.upper()}): Error loading - {str(e)}")
                 self.status_label.setStyleSheet("color: #7986cb; font-weight: bold; padding: 5px;")
+                self.predict_btn.setEnabled(False)
         else:
-            self.status_label.setText(f"Model: Not found at {MODEL_PATH}")
+            self.status_label.setText(f"Model ({self.lang.upper()}): Not found at {model_path}")
             self.status_label.setStyleSheet("color: #9fa8da; font-weight: bold; padding: 5px;")
+            self.predict_btn.setEnabled(False)
     
     def load_model_from_file(self):
         """Load model from file dialog."""
@@ -553,6 +699,76 @@ class TryItOutView(QWidget):
                 self.status_label.setStyleSheet("color: #7986cb; font-weight: bold; padding: 5px;")
                 QMessageBox.critical(self, "Error", f"Failed to load model:\n{str(e)}")
     
+    def extract_years_bucket(self, text: str) -> str:
+        """Extract years bucket from text (e.g., '2 years' -> 'YEARS_2_3')."""
+        import re
+        # Find all numbers followed by "years" or "yrs"
+        matches = re.findall(r"(\d+)\s*(?:\+?\s*)?(?:years?|yrs?)\b", text.lower())
+        if not matches:
+            return "YEARS_NONE"
+        
+        # Take the maximum years mentioned
+        max_years = max([int(m) for m in matches])
+        
+        if max_years <= 1:
+            return "YEARS_0_1"
+        elif max_years <= 3:
+            return "YEARS_2_3"
+        elif max_years <= 5:
+            return "YEARS_4_5"
+        elif max_years <= 8:
+            return "YEARS_6_8"
+        else:
+            return "YEARS_9_PLUS"
+    
+    def get_topk_predictions(self, model, text, k=3):
+        """Get top-k predictions with scores."""
+        import numpy as np
+        try:
+            # Try to get decision function (SVM)
+            if hasattr(model, 'decision_function'):
+                scores = model.decision_function([text])[0]
+                # Get classifier from pipeline if needed
+                if hasattr(model, 'named_steps'):
+                    svm = model.named_steps.get('svm', None)
+                    if svm is not None and hasattr(svm, 'classes_'):
+                        classes = svm.classes_
+                    else:
+                        # Fallback: try to get classes from model
+                        classes = model.classes_ if hasattr(model, 'classes_') else None
+                else:
+                    classes = model.classes_ if hasattr(model, 'classes_') else None
+                
+                if classes is not None and len(scores) == len(classes):
+                    pairs = list(zip(classes, scores))
+                    pairs.sort(key=lambda x: x[1], reverse=True)
+                    return pairs[:k]
+        except Exception:
+            pass
+        
+        # Fallback: use predict_proba if available
+        try:
+            if hasattr(model, 'predict_proba'):
+                proba = model.predict_proba([text])[0]
+                if hasattr(model, 'classes_'):
+                    classes = model.classes_
+                elif hasattr(model, 'named_steps'):
+                    clf = model.named_steps.get('svm', None) or model.named_steps.get('classifier', None)
+                    if clf is not None and hasattr(clf, 'classes_'):
+                        classes = clf.classes_
+                    else:
+                        return None
+                else:
+                    return None
+                
+                pairs = list(zip(classes, proba))
+                pairs.sort(key=lambda x: x[1], reverse=True)
+                return pairs[:k]
+        except Exception:
+            pass
+        
+        return None
+    
     def predict(self):
         """Predict experience level."""
         if self.model is None:
@@ -566,11 +782,40 @@ class TryItOutView(QWidget):
             QMessageBox.warning(self, "Empty Input", "Please enter at least a job title or description.")
             return
         
-        text = f"{title}\n{description}".strip()
+        # Extract years bucket from combined text
+        combined_text = f"{title} {description}".strip()
+        years_bucket = self.extract_years_bucket(combined_text)
+        
+        # Build text in same format as training: title + \n + description + \n + years_bucket
+        text = f"{title}\n{description}\n{years_bucket}".strip()
+        
+        # Check input length
+        word_count = len(text.split())
+        is_short = word_count < 25
         
         try:
             prediction = self.model.predict([text])[0]
-            result_text = f"Predicted Experience Level: {prediction.upper()}"
+            
+            # Get top-k predictions for display
+            topk = self.get_topk_predictions(self.model, text, k=3)
+            
+            # Build result text
+            result_parts = [f"Predicted Experience Level: {prediction.upper()}"]
+            
+            # Add warning for short input
+            if is_short:
+                result_parts.append(f"\n⚠️ Warning: Input is very short ({word_count} words). Prediction may be unreliable.")
+            
+            # Add top-k scores if available
+            if topk:
+                result_parts.append("\n\nTop 3 Predictions (decision scores):")
+                for i, (label, score) in enumerate(topk, 1):
+                    # Decision function scores from LinearSVC (distance from hyperplane, can be negative)
+                    # Higher = more confident, can be negative
+                    score_str = f"{score:.2f}"
+                    result_parts.append(f"{i}. {label.upper()}: {score_str}")
+            
+            result_text = "\n".join(result_parts)
             
             # Navy blue color scheme for different experience levels
             color_map = {
@@ -584,9 +829,12 @@ class TryItOutView(QWidget):
             }
             color = color_map.get(prediction.lower(), "#5c6bc0")
             
+            # Adjust border color if short input (make it more warning-like)
+            border_color = "#ff9800" if is_short else color
+            
             self.result_display.setText(result_text)
             self.result_display.setStyleSheet(
-                f"background-color: #e8eaf6; padding: 15px; border: 3px solid {color}; "
+                f"background-color: #e8eaf6; padding: 15px; border: 3px solid {border_color}; "
                 "border-radius: 5px; min-height: 80px; font-size: 14px; font-weight: bold; "
                 f"color: {color};"
             )
@@ -613,6 +861,7 @@ class DatasetStatisticsView(QWidget):
         self.df_train = None
         self.df_val = None
         self.df_test = None
+        self.dataset_type = "EN"  # "EN" or "PL"
         self.init_ui()
         self.load_data()
     
@@ -638,6 +887,18 @@ class DatasetStatisticsView(QWidget):
         scroll_layout = QVBoxLayout()
         scroll_layout.setSpacing(20)  # Add spacing between sections
         scroll_widget.setLayout(scroll_layout)
+        
+        # Dataset selector
+        selector_layout = QHBoxLayout()
+        selector_label = QLabel("Dataset:")
+        selector_label.setStyleSheet("font-weight: bold; color: #1a237e;")
+        self.dataset_combo = QComboBox()
+        self.dataset_combo.addItems(["EN (English)", "PL (Polish)"])
+        self.dataset_combo.currentIndexChanged.connect(self.on_dataset_changed)
+        selector_layout.addWidget(selector_label)
+        selector_layout.addWidget(self.dataset_combo)
+        selector_layout.addStretch()
+        scroll_layout.addLayout(selector_layout)
         
         # Load data button
         load_btn = QPushButton("Reload Data")
@@ -674,52 +935,76 @@ class DatasetStatisticsView(QWidget):
         scroll.setWidget(scroll_widget)
         layout.addWidget(scroll)
     
+    def on_dataset_changed(self, index):
+        """Handle dataset type change."""
+        self.dataset_type = "EN" if index == 0 else "PL"
+        self.load_data()
+    
     def load_data(self):
-        """Load dataset files."""
+        """Load dataset files based on selected dataset type."""
         self.status_label.setText("Loading data...")
         self.status_label.setStyleSheet("color: #5c6bc0; padding: 5px;")
         
         try:
-            # Try to load cleaned dataset
-            clean_path = Path("en_dataset/en_jobs_clean.csv")
-            if not clean_path.exists():
-                clean_path = Path("data_processing/en_jobs_clean.csv")
-            
-            if clean_path.exists():
-                self.df = pd.read_csv(clean_path, low_memory=False)
-                self.status_label.setText(f"Loaded {len(self.df):,} rows from {clean_path}")
-                self.status_label.setStyleSheet("color: #283593; padding: 5px; font-weight: bold;")
-            else:
-                self.status_label.setText("en_jobs_clean.csv not found. Please run data processing first.")
-                self.status_label.setStyleSheet("color: #7986cb; padding: 5px;")
-                self.df = None
-            
-            # Try to load splits - check multiple locations
-            for split_name, attr_name in [("en_train.csv", "df_train"), 
-                                         ("en_val.csv", "df_val"), 
-                                         ("en_test.csv", "df_test")]:
-                split_path = None
-                # Check multiple possible locations
-                possible_paths = [
-                    Path(f"model_output/{split_name}"),
-                    Path(f"data_processing/{split_name}"),
-                    Path(f"model/{split_name}")
-                ]
+            if self.dataset_type == "EN":
+                # Try to load cleaned EN dataset
+                clean_path = Path("en_dataset/en_jobs_clean.csv")
+                if not clean_path.exists():
+                    clean_path = Path("data_processing/en_jobs_clean.csv")
                 
-                for path in possible_paths:
-                    if path.exists():
-                        split_path = path
-                        break
-                
-                if split_path and split_path.exists():
-                    try:
-                        setattr(self, attr_name, pd.read_csv(split_path, low_memory=False))
-                        print(f"Loaded {split_name} from {split_path}")
-                    except Exception as e:
-                        print(f"Error loading {split_name}: {e}")
-                        setattr(self, attr_name, None)
+                if clean_path.exists():
+                    self.df = pd.read_csv(clean_path, low_memory=False)
+                    self.status_label.setText(f"Loaded {len(self.df):,} rows from {clean_path}")
+                    self.status_label.setStyleSheet("color: #283593; padding: 5px; font-weight: bold;")
                 else:
-                    setattr(self, attr_name, None)
+                    self.status_label.setText("en_jobs_clean.csv not found. Please run data processing first.")
+                    self.status_label.setStyleSheet("color: #7986cb; padding: 5px;")
+                    self.df = None
+                
+                # Try to load EN splits
+                for split_name, attr_name in [("en_train.csv", "df_train"), 
+                                             ("en_val.csv", "df_val"), 
+                                             ("en_test.csv", "df_test")]:
+                    split_path = None
+                    possible_paths = [
+                        Path(f"model_output/{split_name}"),
+                        Path(f"data_processing/{split_name}"),
+                        Path(f"model/{split_name}")
+                    ]
+                    
+                    for path in possible_paths:
+                        if path.exists():
+                            split_path = path
+                            break
+                    
+                    if split_path and split_path.exists():
+                        try:
+                            setattr(self, attr_name, pd.read_csv(split_path, low_memory=False))
+                            print(f"Loaded {split_name} from {split_path}")
+                        except Exception as e:
+                            print(f"Error loading {split_name}: {e}")
+                            setattr(self, attr_name, None)
+                    else:
+                        setattr(self, attr_name, None)
+            else:
+                # Load PL dataset
+                clean_path = Path("pl_dataset/pl_jobs_clean.csv")
+                if not clean_path.exists():
+                    clean_path = Path("data_processing/pl_jobs_clean.csv")
+                
+                if clean_path.exists():
+                    self.df = pd.read_csv(clean_path, low_memory=False)
+                    self.status_label.setText(f"Loaded {len(self.df):,} rows from {clean_path}")
+                    self.status_label.setStyleSheet("color: #283593; padding: 5px; font-weight: bold;")
+                else:
+                    self.status_label.setText("pl_jobs_clean.csv not found. Please run data processing first.")
+                    self.status_label.setStyleSheet("color: #7986cb; padding: 5px;")
+                    self.df = None
+                
+                # PL doesn't have splits yet, set to None
+                self.df_train = None
+                self.df_val = None
+                self.df_test = None
             
             # Update all visualizations
             self.update_overview()
@@ -892,24 +1177,51 @@ class DatasetStatisticsView(QWidget):
         
         # Calculate metrics
         raw_rows = len(self.df)
-        rows_with_label = self.df["platform_experience_label"].notna().sum() if "platform_experience_label" in self.df.columns else 0
-        rows_without_label = raw_rows - rows_with_label
         
-        cov_years = self.df["years_hint"].notna().mean() * 100 if "years_hint" in self.df.columns else 0
-        cov_title = self.df["title_hint"].notna().mean() * 100 if "title_hint" in self.df.columns else 0
-        cov_platform = self.df["platform_experience_label"].notna().mean() * 100 if "platform_experience_label" in self.df.columns else 0
-        
-        # Update labels
-        self.metric_labels["Raw Rows"].setText(f"{raw_rows:,}")
-        self.metric_labels["Rows with Platform Label"].setText(f"{rows_with_label:,}")
-        self.metric_labels["Rows without Platform Label"].setText(f"{rows_without_label:,}")
-        self.metric_labels["Years Hint Coverage"].setText(f"{cov_years:.1f}%")
-        self.metric_labels["Title Hint Coverage"].setText(f"{cov_title:.1f}%")
-        self.metric_labels["Platform Label Coverage"].setText(f"{cov_platform:.1f}%")
+        if self.dataset_type == "EN":
+            rows_with_label = self.df["platform_experience_label"].notna().sum() if "platform_experience_label" in self.df.columns else 0
+            rows_without_label = raw_rows - rows_with_label
+            
+            cov_years = self.df["years_hint"].notna().mean() * 100 if "years_hint" in self.df.columns else 0
+            cov_title = self.df["title_hint"].notna().mean() * 100 if "title_hint" in self.df.columns else 0
+            cov_platform = self.df["platform_experience_label"].notna().mean() * 100 if "platform_experience_label" in self.df.columns else 0
+            
+            # Update labels
+            self.metric_labels["Raw Rows"].setText(f"{raw_rows:,}")
+            self.metric_labels["Rows with Platform Label"].setText(f"{rows_with_label:,}")
+            self.metric_labels["Rows without Platform Label"].setText(f"{rows_without_label:,}")
+            self.metric_labels["Years Hint Coverage"].setText(f"{cov_years:.1f}%")
+            self.metric_labels["Title Hint Coverage"].setText(f"{cov_title:.1f}%")
+            self.metric_labels["Platform Label Coverage"].setText(f"{cov_platform:.1f}%")
+        else:
+            # PL-specific metrics
+            rows_with_label = self.df["experience_label"].notna().sum() if "experience_label" in self.df.columns else 0
+            rows_without_label = raw_rows - rows_with_label
+            
+            cov_years = self.df["years_hint"].notna().mean() * 100 if "years_hint" in self.df.columns else 0
+            cov_title = self.df["title_hint"].notna().mean() * 100 if "title_hint" in self.df.columns else 0
+            cov_experience = self.df["experience_label"].notna().mean() * 100 if "experience_label" in self.df.columns else 0
+            cov_salary = self.df["salary_min"].notna().mean() * 100 if "salary_min" in self.df.columns else 0
+            cov_remote = self.df["remote_allowed"].notna().mean() * 100 if "remote_allowed" in self.df.columns else 0
+            pct_salary_suspect = (self.df["salary_suspect"].sum() / len(self.df) * 100) if "salary_suspect" in self.df.columns else 0
+            
+            # Update labels (PL has different metrics)
+            self.metric_labels["Raw Rows"].setText(f"{raw_rows:,}")
+            self.metric_labels["Rows with Platform Label"].setText(f"{rows_with_label:,}")
+            self.metric_labels["Rows without Platform Label"].setText(f"{rows_without_label:,}")
+            self.metric_labels["Years Hint Coverage"].setText(f"{cov_years:.1f}%")
+            self.metric_labels["Title Hint Coverage"].setText(f"{cov_title:.1f}%")
+            self.metric_labels["Platform Label Coverage"].setText(f"{cov_experience:.1f}%")
         
         # Missingness chart
-        key_cols = ["title", "description_clean", "salary_annual_min", "salary_annual_max", 
-                   "pay_period", "work_type", "remote_allowed", "location"]
+        if self.dataset_type == "EN":
+            key_cols = ["title", "description_clean", "salary_annual_min", "salary_annual_max", 
+                       "pay_period", "work_type", "remote_allowed", "location"]
+        else:
+            key_cols = ["title", "description_clean", "salary_min", "salary_max", 
+                       "pay_period", "work_type", "remote_allowed", "location", 
+                       "contract_type", "experience_label"]
+        
         missing_data = {}
         for col in key_cols:
             if col in self.df.columns:
@@ -930,16 +1242,25 @@ class DatasetStatisticsView(QWidget):
     
     def update_label_distribution(self):
         """Update label distribution charts."""
-        if self.df is None or "platform_experience_label" not in self.df.columns:
+        if self.df is None:
             return
         
-        silver = self.df[self.df["platform_experience_label"].notna()].copy()
+        # Determine label column based on dataset type
+        if self.dataset_type == "EN":
+            label_col = "platform_experience_label"
+        else:
+            label_col = "experience_label"
+        
+        if label_col not in self.df.columns:
+            return
+        
+        silver = self.df[self.df[label_col].notna()].copy()
         if len(silver) == 0:
             return
         
         # Class distribution
-        label_counts = silver["platform_experience_label"].value_counts()
-        label_props = silver["platform_experience_label"].value_counts(normalize=True) * 100
+        label_counts = silver[label_col].value_counts()
+        label_props = silver[label_col].value_counts(normalize=True) * 100
         
         fig = self.label_dist_canvas.figure
         fig.clear()
@@ -952,12 +1273,12 @@ class DatasetStatisticsView(QWidget):
         fig.tight_layout()
         self.label_dist_canvas.draw()
         
-        # Split distribution
+        # Split distribution (only for EN)
         fig = self.split_dist_canvas.figure
         fig.clear()
         ax = fig.add_subplot(111)
         
-        if self.df_train is not None and self.df_val is not None and self.df_test is not None:
+        if self.dataset_type == "EN" and self.df_train is not None and self.df_val is not None and self.df_test is not None:
             splits = {
                 'Train': self.df_train,
                 'Val': self.df_val,
@@ -994,9 +1315,15 @@ class DatasetStatisticsView(QWidget):
                        fontsize=12, color='#5c6bc0')
                 ax.set_title('Label Distribution by Split - No Data')
         else:
-            ax.text(0.5, 0.5, 'Split files not found.\nPlease run "Create Train/Val/Test Split" first.', 
-                   ha='center', va='center', transform=ax.transAxes,
-                   fontsize=12, color='#5c6bc0')
+            if self.dataset_type == "PL":
+                ax.text(0.5, 0.5, 'PL dataset does not have train/val/test splits yet.', 
+                       ha='center', va='center', transform=ax.transAxes,
+                       fontsize=12, color='#5c6bc0')
+                ax.set_title('Label Distribution by Split - Not Available')
+            else:
+                ax.text(0.5, 0.5, 'Split files not found.\nPlease run "Create Train/Val/Test Split" first.', 
+                       ha='center', va='center', transform=ax.transAxes,
+                       fontsize=12, color='#5c6bc0')
             ax.set_title('Label Distribution by Split - Files Not Found')
         
         fig.tight_layout()
@@ -1135,6 +1462,490 @@ class DatasetStatisticsView(QWidget):
                 self.time_canvas.draw()
         except Exception as e:
             pass  # Skip if time conversion fails
+
+
+class ModelPerformanceView(QWidget):
+    """View for displaying model performance metrics and visualizations."""
+    
+    def __init__(self):
+        super().__init__()
+        self.metrics_data = None
+        self.predictions_df = None
+        self.lang = "en"
+        self.init_ui()
+    
+    def init_ui(self):
+        """Initialize the UI."""
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # Language selector
+        lang_layout = QHBoxLayout()
+        lang_label = QLabel("Language:")
+        lang_label.setStyleSheet("font-weight: bold; color: #1a237e;")
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItems(["EN", "PL"])
+        self.lang_combo.setCurrentText("EN")
+        self.lang_combo.currentTextChanged.connect(self.on_lang_changed)
+        lang_layout.addWidget(lang_label)
+        lang_layout.addWidget(self.lang_combo)
+        lang_layout.addStretch()
+        layout.addLayout(lang_layout)
+        
+        # Scroll area for content
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+        
+        content_widget = QWidget()
+        content_layout = QVBoxLayout()
+        content_layout.setSpacing(20)
+        content_widget.setLayout(content_layout)
+        
+        # Overview section (metrics cards)
+        content_layout.addWidget(self.create_overview_section())
+        
+        # Confusion matrix
+        content_layout.addWidget(self.create_confusion_matrix_section())
+        
+        # Per-class metrics
+        content_layout.addWidget(self.create_per_class_section())
+        
+        # CV metrics (if available)
+        content_layout.addWidget(self.create_cv_metrics_section())
+        
+        # Error table
+        content_layout.addWidget(self.create_error_table_section())
+        
+        content_layout.addStretch()
+        scroll.setWidget(content_widget)
+        layout.addWidget(scroll)
+        
+        self.setLayout(layout)
+        
+        # Load initial data
+        self.load_data()
+    
+    def create_overview_section(self):
+        """Create overview section with metric cards."""
+        group = QGroupBox("Model Performance Overview")
+        group.setFont(QFont("Arial", 12, QFont.Bold))
+        layout = QVBoxLayout()
+        group.setLayout(layout)
+        
+        # Dataset info
+        info_layout = QGridLayout()
+        self.info_labels = {}
+        info_fields = ["Language", "Label Column", "Train Size", "Val Size", "Test Size", "Number of Classes"]
+        
+        for i, field in enumerate(info_fields):
+            label = QLabel(f"{field}:")
+            label.setStyleSheet("font-weight: bold; color: #1a237e;")
+            value = QLabel("N/A")
+            value.setStyleSheet("color: #5c6bc0; padding: 2px;")
+            self.info_labels[field] = value
+            
+            row = i // 2
+            col = (i % 2) * 2
+            info_layout.addWidget(label, row, col)
+            info_layout.addWidget(value, row, col + 1)
+        
+        layout.addLayout(info_layout)
+        
+        # Metrics cards
+        metrics_layout = QHBoxLayout()
+        
+        # Test metrics
+        test_group = QGroupBox("Test Metrics")
+        test_group.setStyleSheet("QGroupBox { font-weight: bold; }")
+        test_layout = QVBoxLayout()
+        self.test_labels = {}
+        for metric in ["Accuracy", "F1 Macro", "F1 Weighted"]:
+            label = QLabel(f"{metric}:")
+            label.setStyleSheet("font-weight: bold; color: #1a237e;")
+            value = QLabel("N/A")
+            value.setStyleSheet("color: #3949ab; font-size: 14px; padding: 5px;")
+            self.test_labels[metric] = value
+            test_layout.addWidget(label)
+            test_layout.addWidget(value)
+        test_group.setLayout(test_layout)
+        metrics_layout.addWidget(test_group)
+        
+        # Val metrics
+        val_group = QGroupBox("Validation Metrics")
+        val_group.setStyleSheet("QGroupBox { font-weight: bold; }")
+        val_layout = QVBoxLayout()
+        self.val_labels = {}
+        for metric in ["Accuracy", "F1 Macro", "F1 Weighted"]:
+            label = QLabel(f"{metric}:")
+            label.setStyleSheet("font-weight: bold; color: #1a237e;")
+            value = QLabel("N/A")
+            value.setStyleSheet("color: #3949ab; font-size: 14px; padding: 5px;")
+            self.val_labels[metric] = value
+            val_layout.addWidget(label)
+            val_layout.addWidget(value)
+        val_group.setLayout(val_layout)
+        metrics_layout.addWidget(val_group)
+        
+        layout.addLayout(metrics_layout)
+        
+        return group
+    
+    def create_confusion_matrix_section(self):
+        """Create confusion matrix section."""
+        group = QGroupBox("Confusion Matrix")
+        group.setFont(QFont("Arial", 12, QFont.Bold))
+        layout = QVBoxLayout()
+        group.setLayout(layout)
+        
+        self.confusion_canvas = FigureCanvas(Figure(figsize=(8, 7)))
+        self.confusion_canvas.setStyleSheet("background-color: white;")
+        self.confusion_canvas.setFixedHeight(500)
+        layout.addWidget(self.confusion_canvas)
+        
+        return group
+    
+    def create_per_class_section(self):
+        """Create per-class metrics section."""
+        group = QGroupBox("Per-Class Metrics")
+        group.setFont(QFont("Arial", 12, QFont.Bold))
+        layout = QVBoxLayout()
+        group.setLayout(layout)
+        
+        # F1 per class
+        f1_label = QLabel("F1 Score by Class:")
+        f1_label.setStyleSheet("font-weight: bold; color: #1a237e;")
+        layout.addWidget(f1_label)
+        
+        self.f1_canvas = FigureCanvas(Figure(figsize=(10, 5)))
+        self.f1_canvas.setStyleSheet("background-color: white;")
+        self.f1_canvas.setFixedHeight(400)
+        layout.addWidget(self.f1_canvas)
+        
+        # Recall per class
+        recall_label = QLabel("Recall by Class:")
+        recall_label.setStyleSheet("font-weight: bold; color: #1a237e; margin-top: 10px;")
+        layout.addWidget(recall_label)
+        
+        self.recall_canvas = FigureCanvas(Figure(figsize=(10, 5)))
+        self.recall_canvas.setStyleSheet("background-color: white;")
+        self.recall_canvas.setFixedHeight(400)
+        layout.addWidget(self.recall_canvas)
+        
+        return group
+    
+    def create_cv_metrics_section(self):
+        """Create CV metrics section."""
+        group = QGroupBox("Cross-Validation Metrics (Stability)")
+        group.setFont(QFont("Arial", 12, QFont.Bold))
+        layout = QVBoxLayout()
+        group.setLayout(layout)
+        
+        self.cv_labels = {}
+        cv_layout = QGridLayout()
+        cv_fields = ["CV Accuracy", "CV F1 Macro", "CV F1 Weighted"]
+        
+        for i, field in enumerate(cv_fields):
+            label = QLabel(f"{field}:")
+            label.setStyleSheet("font-weight: bold; color: #1a237e;")
+            value = QLabel("N/A")
+            value.setStyleSheet("color: #5c6bc0; padding: 2px;")
+            self.cv_labels[field] = value
+            
+            row = i // 2
+            col = (i % 2) * 2
+            cv_layout.addWidget(label, row, col)
+            cv_layout.addWidget(value, row, col + 1)
+        
+        layout.addLayout(cv_layout)
+        
+        # Stability info
+        stability_label = QLabel("Stability (lower std = more stable):")
+        stability_label.setStyleSheet("font-weight: bold; color: #1a237e; margin-top: 10px;")
+        layout.addWidget(stability_label)
+        
+        self.stability_labels = {}
+        stability_layout = QGridLayout()
+        stability_fields = ["F1 Macro Std", "Accuracy Std"]
+        
+        for i, field in enumerate(stability_fields):
+            label = QLabel(f"{field}:")
+            label.setStyleSheet("font-weight: bold; color: #1a237e;")
+            value = QLabel("N/A")
+            value.setStyleSheet("color: #5c6bc0; padding: 2px;")
+            self.stability_labels[field] = value
+            
+            row = i // 2
+            col = (i % 2) * 2
+            stability_layout.addWidget(label, row, col)
+            stability_layout.addWidget(value, row, col + 1)
+        
+        layout.addLayout(stability_layout)
+        
+        return group
+    
+    def create_error_table_section(self):
+        """Create error table section."""
+        group = QGroupBox("Prediction Errors (Test Set)")
+        group.setFont(QFont("Arial", 12, QFont.Bold))
+        layout = QVBoxLayout()
+        group.setLayout(layout)
+        
+        # Filter options
+        filter_layout = QHBoxLayout()
+        filter_label = QLabel("Show:")
+        filter_label.setStyleSheet("font-weight: bold; color: #1a237e;")
+        self.error_filter_combo = QComboBox()
+        self.error_filter_combo.addItems(["All", "Errors Only", "Correct Only"])
+        self.error_filter_combo.currentTextChanged.connect(self.update_error_table)
+        filter_layout.addWidget(filter_label)
+        filter_layout.addWidget(self.error_filter_combo)
+        filter_layout.addStretch()
+        layout.addLayout(filter_layout)
+        
+        # Table (using QTextEdit as simple table)
+        self.error_table = QTextEdit()
+        self.error_table.setReadOnly(True)
+        self.error_table.setStyleSheet("background-color: white; font-family: monospace;")
+        self.error_table.setFixedHeight(300)
+        layout.addWidget(self.error_table)
+        
+        return group
+    
+    def on_lang_changed(self, lang_text):
+        """Handle language change."""
+        self.lang = lang_text.lower()
+        self.load_data()
+    
+    def load_data(self):
+        """Load metrics and predictions data."""
+        metrics_path = Path(f"model_output/metrics_{self.lang}.json")
+        pred_path = Path(f"model_output/baseline_test_predictions_{self.lang}.csv")
+        
+        # Load metrics
+        if metrics_path.exists():
+            try:
+                with open(metrics_path, 'r', encoding='utf-8') as f:
+                    self.metrics_data = json.load(f)
+            except Exception as e:
+                print(f"Error loading metrics: {e}")
+                self.metrics_data = None
+        else:
+            self.metrics_data = None
+        
+        # Load predictions
+        if pred_path.exists():
+            try:
+                self.predictions_df = pd.read_csv(pred_path, low_memory=False)
+            except Exception as e:
+                print(f"Error loading predictions: {e}")
+                self.predictions_df = None
+        else:
+            self.predictions_df = None
+        
+        # Update UI
+        self.update_overview()
+        self.update_confusion_matrix()
+        self.update_per_class_metrics()
+        self.update_cv_metrics()
+        self.update_error_table()
+    
+    def update_overview(self):
+        """Update overview section."""
+        if self.metrics_data is None:
+            return
+        
+        # Update info labels
+        self.info_labels["Language"].setText(self.metrics_data.get("lang", "N/A"))
+        self.info_labels["Label Column"].setText(self.metrics_data.get("label_col", "N/A"))
+        self.info_labels["Train Size"].setText(str(self.metrics_data.get("n_train", "N/A")))
+        self.info_labels["Val Size"].setText(str(self.metrics_data.get("n_val", "N/A")))
+        self.info_labels["Test Size"].setText(str(self.metrics_data.get("n_test", "N/A")))
+        self.info_labels["Number of Classes"].setText(str(self.metrics_data.get("n_classes", "N/A")))
+        
+        # Update test metrics
+        test_metrics = self.metrics_data.get("test_metrics", {})
+        self.test_labels["Accuracy"].setText(f"{test_metrics.get('accuracy', 0):.3f}")
+        self.test_labels["F1 Macro"].setText(f"{test_metrics.get('f1_macro', 0):.3f}")
+        self.test_labels["F1 Weighted"].setText(f"{test_metrics.get('f1_weighted', 0):.3f}")
+        
+        # Update val metrics
+        val_metrics = self.metrics_data.get("val_metrics", {})
+        self.val_labels["Accuracy"].setText(f"{val_metrics.get('accuracy', 0):.3f}")
+        self.val_labels["F1 Macro"].setText(f"{val_metrics.get('f1_macro', 0):.3f}")
+        self.val_labels["F1 Weighted"].setText(f"{val_metrics.get('f1_weighted', 0):.3f}")
+    
+    def update_confusion_matrix(self):
+        """Update confusion matrix plot."""
+        if self.metrics_data is None:
+            return
+        
+        cm = self.metrics_data.get("confusion_matrix")
+        labels = self.metrics_data.get("confusion_labels", [])
+        
+        if cm is None or len(labels) == 0:
+            return
+        
+        fig = self.confusion_canvas.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        
+        # Convert to numpy array
+        cm_array = np.array(cm)
+        
+        # Create heatmap (use matplotlib if seaborn not available)
+        if HAS_SEABORN:
+            sns.heatmap(cm_array, annot=True, fmt='d', cmap='Blues', ax=ax,
+                       xticklabels=labels, yticklabels=labels,
+                       cbar_kws={'label': 'Count'})
+        else:
+            # Fallback to matplotlib imshow
+            im = ax.imshow(cm_array, cmap='Blues', aspect='auto')
+            ax.set_xticks(range(len(labels)))
+            ax.set_yticks(range(len(labels)))
+            ax.set_xticklabels(labels)
+            ax.set_yticklabels(labels)
+            
+            # Add text annotations
+            for i in range(len(labels)):
+                for j in range(len(labels)):
+                    text = ax.text(j, i, int(cm_array[i, j]),
+                                 ha="center", va="center", color="black", fontweight='bold')
+            
+            fig.colorbar(im, ax=ax, label='Count')
+        
+        ax.set_xlabel('Predicted', fontsize=12)
+        ax.set_ylabel('True', fontsize=12)
+        ax.set_title('Confusion Matrix', fontsize=14, fontweight='bold')
+        ax.tick_params(axis='x', rotation=45)
+        ax.tick_params(axis='y', rotation=0)
+        
+        fig.tight_layout()
+        self.confusion_canvas.draw()
+    
+    def update_per_class_metrics(self):
+        """Update per-class metrics plots."""
+        if self.metrics_data is None:
+            return
+        
+        per_class = self.metrics_data.get("per_class_metrics", {})
+        if not per_class:
+            return
+        
+        # Extract data
+        classes = list(per_class.keys())
+        f1_scores = [per_class[c].get("f1", 0) for c in classes]
+        recalls = [per_class[c].get("recall", 0) for c in classes]
+        supports = [per_class[c].get("support", 0) for c in classes]
+        
+        # F1 plot
+        fig = self.f1_canvas.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        
+        bars = ax.bar(classes, f1_scores, color='#5c6bc0', edgecolor='#3949ab')
+        ax.set_ylabel('F1 Score', fontsize=11)
+        ax.set_xlabel('Class', fontsize=11)
+        ax.set_title('F1 Score by Class', fontsize=12, fontweight='bold')
+        ax.set_ylim(0, 1.0)
+        ax.tick_params(axis='x', rotation=45)
+        
+        # Add support annotations
+        for i, (bar, support) in enumerate(zip(bars, supports)):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 0.02,
+                   f'n={support}', ha='center', va='bottom', fontsize=9)
+        
+        fig.tight_layout()
+        self.f1_canvas.draw()
+        
+        # Recall plot
+        fig = self.recall_canvas.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        
+        bars = ax.bar(classes, recalls, color='#7986cb', edgecolor='#5c6bc0')
+        ax.set_ylabel('Recall', fontsize=11)
+        ax.set_xlabel('Class', fontsize=11)
+        ax.set_title('Recall by Class', fontsize=12, fontweight='bold')
+        ax.set_ylim(0, 1.0)
+        ax.tick_params(axis='x', rotation=45)
+        
+        # Add support annotations
+        for i, (bar, support) in enumerate(zip(bars, supports)):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 0.02,
+                   f'n={support}', ha='center', va='bottom', fontsize=9)
+        
+        fig.tight_layout()
+        self.recall_canvas.draw()
+    
+    def update_cv_metrics(self):
+        """Update CV metrics section."""
+        if self.metrics_data is None:
+            return
+        
+        cv_metrics = self.metrics_data.get("cv_metrics")
+        if cv_metrics is None:
+            # Hide CV section if not available
+            return
+        
+        # Update CV labels
+        self.cv_labels["CV Accuracy"].setText(
+            f"{cv_metrics.get('cv_accuracy_mean', 0):.3f} ± {cv_metrics.get('cv_accuracy_std', 0):.3f}"
+        )
+        self.cv_labels["CV F1 Macro"].setText(
+            f"{cv_metrics.get('cv_f1_macro_mean', 0):.3f} ± {cv_metrics.get('cv_f1_macro_std', 0):.3f}"
+        )
+        self.cv_labels["CV F1 Weighted"].setText(
+            f"{cv_metrics.get('cv_f1_weighted_mean', 0):.3f} ± {cv_metrics.get('cv_f1_weighted_std', 0):.3f}"
+        )
+        
+        # Update stability labels
+        stability = self.metrics_data.get("stability", {})
+        self.stability_labels["F1 Macro Std"].setText(f"{stability.get('f1_macro_std', 0):.4f}")
+        self.stability_labels["Accuracy Std"].setText(f"{stability.get('accuracy_std', 0):.4f}")
+    
+    def update_error_table(self):
+        """Update error table."""
+        if self.predictions_df is None:
+            self.error_table.setText("No predictions data available.")
+            return
+        
+        filter_text = self.error_filter_combo.currentText()
+        
+        # Filter data
+        if filter_text == "Errors Only":
+            df = self.predictions_df[~self.predictions_df["correct"]].copy()
+        elif filter_text == "Correct Only":
+            df = self.predictions_df[self.predictions_df["correct"]].copy()
+        else:
+            df = self.predictions_df.copy()
+        
+        if len(df) == 0:
+            self.error_table.setText(f"No {filter_text.lower()} predictions found.")
+            return
+        
+        # Format as table
+        cols = ["job_id", "title", "true_label", "predicted_label", "correct"]
+        available_cols = [c for c in cols if c in df.columns]
+        
+        # Create header
+        header = " | ".join([col.ljust(20) for col in available_cols])
+        separator = "-" * len(header)
+        lines = [header, separator]
+        
+        # Add rows (limit to 50 for performance)
+        for _, row in df.head(50).iterrows():
+            line = " | ".join([str(row.get(col, "")).ljust(20)[:20] for col in available_cols])
+            lines.append(line)
+        
+        if len(df) > 50:
+            lines.append(f"\n... and {len(df) - 50} more rows")
+        
+        self.error_table.setText("\n".join(lines))
 
 
 class MainWindow(QMainWindow):
