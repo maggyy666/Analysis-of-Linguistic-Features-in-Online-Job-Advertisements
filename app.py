@@ -927,8 +927,6 @@ class DatasetStatisticsView(QWidget):
         scroll_layout.addWidget(self.work_group)
         
         # Time section
-        self.time_group = self.create_time_section()
-        scroll_layout.addWidget(self.time_group)
         
         scroll_layout.addStretch()
         
@@ -1011,7 +1009,6 @@ class DatasetStatisticsView(QWidget):
             self.update_label_distribution()
             self.update_text_statistics()
             self.update_work_arrangement()
-            self.update_time()
             
         except Exception as e:
             self.status_label.setText(f"Error loading data: {str(e)}")
@@ -1152,21 +1149,6 @@ class DatasetStatisticsView(QWidget):
         self.salary_canvas.setStyleSheet("background-color: white;")
         self.salary_canvas.setFixedHeight(500)
         layout.addWidget(self.salary_canvas)
-        
-        return group
-    
-    def create_time_section(self):
-        """Create time/drift section."""
-        group = QGroupBox("Time Series / Drift")
-        group.setFont(QFont("Arial", 12, QFont.Bold))
-        layout = QVBoxLayout()
-        layout.setSpacing(10)
-        group.setLayout(layout)
-        
-        self.time_canvas = FigureCanvas(Figure(figsize=(10, 4)))
-        self.time_canvas.setStyleSheet("background-color: white;")
-        self.time_canvas.setFixedHeight(400)
-        layout.addWidget(self.time_canvas)
         
         return group
     
@@ -1436,34 +1418,6 @@ class DatasetStatisticsView(QWidget):
                 fig.tight_layout()
                 self.salary_canvas.draw()
     
-    def update_time(self):
-        """Update time series chart."""
-        if self.df is None or "original_listed_time" not in self.df.columns:
-            return
-        
-        silver = self.df[self.df["platform_experience_label"].notna()].copy() if "platform_experience_label" in self.df.columns else self.df.copy()
-        
-        try:
-            t = pd.to_datetime(silver["original_listed_time"], unit="ms", errors="coerce")
-            silver["month"] = t.dt.to_period("M").astype(str)
-            posts_per_month = silver["month"].value_counts().sort_index()
-            
-            if len(posts_per_month) > 0:
-                fig = self.time_canvas.figure
-                fig.clear()
-                ax = fig.add_subplot(111)
-                ax.plot(posts_per_month.index, posts_per_month.values, 
-                       marker='o', color='#3949ab', linewidth=2, markersize=4)
-                ax.set_xlabel('Month')
-                ax.set_ylabel('Number of Postings')
-                ax.set_title('Job Postings Over Time')
-                ax.tick_params(axis='x', rotation=45)
-                fig.tight_layout()
-                self.time_canvas.draw()
-        except Exception as e:
-            pass  # Skip if time conversion fails
-
-
 class ModelPerformanceView(QWidget):
     """View for displaying model performance metrics and visualizations."""
     
@@ -1722,7 +1676,12 @@ class ModelPerformanceView(QWidget):
     def load_data(self):
         """Load metrics and predictions data."""
         metrics_path = Path(f"model_output/metrics_{self.lang}.json")
-        pred_path = Path(f"model_output/baseline_test_predictions_{self.lang}.csv")
+        # For EN, file is baseline_test_predictions.csv (without _en suffix)
+        # For PL, file is baseline_test_predictions_pl.csv
+        if self.lang == "en":
+            pred_path = Path("model_output/baseline_test_predictions.csv")
+        else:
+            pred_path = Path(f"model_output/baseline_test_predictions_{self.lang}.csv")
         
         # Load metrics
         if metrics_path.exists():
