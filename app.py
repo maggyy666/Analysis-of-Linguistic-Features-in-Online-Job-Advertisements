@@ -802,9 +802,6 @@ class TryItOutView(QWidget):
             # Build result text
             result_parts = [f"Predicted Experience Level: {prediction.upper()}"]
             
-            # Add warning for short input
-            if is_short:
-                result_parts.append(f"\n⚠️ Warning: Input is very short ({word_count} words). Prediction may be unreliable.")
             
             # Add top-k scores if available
             if topk:
