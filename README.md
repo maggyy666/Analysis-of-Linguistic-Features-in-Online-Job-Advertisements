@@ -274,4 +274,6 @@ python model/train_baseline_tfidf.py pl
 * **Weird predictions for obvious “2 years” cases**
   Verify that inference text formatting matches training text formatting (see “Known Caveats”).
 
+
+dataset link: https://www.kaggle.com/datasets/arshkon/linkedin-job-postings?resource=download
 ---
