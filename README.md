@@ -276,4 +276,6 @@ python model/train_baseline_tfidf.py pl
 
 
 dataset link: https://www.kaggle.com/datasets/arshkon/linkedin-job-postings?resource=download
+
+create folder en_dataset -> change name to "en_postings.csv"
 ---
