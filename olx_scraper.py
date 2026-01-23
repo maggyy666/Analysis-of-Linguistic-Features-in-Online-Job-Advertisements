@@ -1,8 +1,3 @@
-"""
-Prosty scraper OLX - 5 ogłoszeń ze strony 1
-Minimalistycznie, bez emoji, bez zbędnych folderów
-"""
-
 import asyncio
 import csv
 import time
@@ -12,13 +7,12 @@ from tabulate import tabulate
 
 
 def load_existing_jobs():
-    """Ładuje istniejące ogłoszenia z CSV dla deduplikacji"""
     existing_jobs = set()
     try:
         with open('jobs.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if row['title'] and row['title'] != '403 ERROR':  # Tylko jeśli tytuł nie jest pusty i nie jest błędem
+                if row['title'] and row['title'] != '403 ERROR':
                     existing_jobs.add(row['title'].strip().lower())
         print(f"Loaded {len(existing_jobs)} existing jobs for deduplication")
     except FileNotFoundError:
@@ -27,7 +21,6 @@ def load_existing_jobs():
 
 
 def count_existing_jobs():
-    """Liczy ile ogłoszeń już mamy zapisanych"""
     try:
         with open('jobs.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
@@ -41,8 +34,6 @@ def count_existing_jobs():
 
 
 async def analyze_total_pages():
-    """Analizuje ile jest stron i ogłoszeń na OLX praca"""
-    
     print("Analyzing OLX pagination...")
     
     async with async_playwright() as p:
@@ -50,7 +41,6 @@ async def analyze_total_pages():
         page = await browser.new_page()
         
         try:
-            # Sprawdź stronę 1 - ile ogłoszeń na stronę
             url = "https://www.olx.pl/praca/?page=1"
             print(f"Scanning page 1: {url}")
             
@@ -64,7 +54,6 @@ async def analyze_total_pages():
             if not job_links:
                 return 0, 0
             
-            # Sprawdź stronę 25 - ostatnią
             url = "https://www.olx.pl/praca/?page=25"
             print(f"Scanning page 25: {url}")
             
@@ -75,7 +64,6 @@ async def analyze_total_pages():
             jobs_on_last_page = len(job_links_page25)
             print(f"Page 25: {jobs_on_last_page} jobs found")
             
-            # Oblicz szacunkową liczbę
             total_pages = 25
             estimated_total = (jobs_per_page * 24) + jobs_on_last_page
             
@@ -95,8 +83,6 @@ async def analyze_total_pages():
 
 
 async def collect_all_job_links():
-    """Zbiera linki do ogłoszeń ze wszystkich 25 stron"""
-    
     existing_jobs = load_existing_jobs()
     all_links = []
     
@@ -105,14 +91,13 @@ async def collect_all_job_links():
         page = await browser.new_page()
         
         try:
-            for page_num in range(1, 26):  # Strony 1-25
+            for page_num in range(1, 26):
                 url = f"https://www.olx.pl/praca/?page={page_num}"
                 print(f"Page {page_num}/25: {url}")
                 
                 await page.goto(url, wait_until="networkidle", timeout=30000)
                 await page.wait_for_timeout(3000)
                 
-                # Znajdź wszystkie linki do ogłoszeń
                 job_links = await page.query_selector_all('a[href*="/oferta/praca/"]')
                 
                 if not job_links:
@@ -125,27 +110,24 @@ async def collect_all_job_links():
                     if href and '/oferta/praca/' in href:
                         full_url = f"https://www.olx.pl{href}" if href.startswith('/') else href
                         
-                        # Pobierz tytuł dla deduplikacji
                         try:
                             title_elem = await link.query_selector('h4')
                             if title_elem:
                                 title = await title_elem.inner_text()
                                 title_clean = title.strip().lower()
                                 
-                                # Sprawdź czy już mamy to ogłoszenie
                                 if title_clean not in existing_jobs:
                                     page_links.append(full_url)
                                     existing_jobs.add(title_clean)
                                 else:
                                     print(f"  Duplicate skipped: {title[:50]}...")
                         except:
-                            # Jeśli nie można pobrać tytułu, dodaj link
                             page_links.append(full_url)
                 
                 print(f"Page {page_num}/25: Found {len(job_links)} total jobs, {len(page_links)} new jobs")
                 all_links.extend(page_links)
                 
-                time.sleep(2)  # Pauza między stronami
+                time.sleep(2)
         
         except Exception as e:
             print(f"Error collecting links: {str(e)}")
@@ -156,13 +138,10 @@ async def collect_all_job_links():
 
 
 async def scrape_jobs_in_batches(links, batch_size=5):
-    """Scrapuje ogłoszenia w batch'ach z zapisem po każdym batch'u i ETA"""
-    
     all_jobs = load_existing_jobs_from_csv()
     total_links = len(links)
     total_batches = (total_links + batch_size - 1) // batch_size
     
-    # Statystyki czasu
     batch_times = []
     start_time = time.time()
     
@@ -185,16 +164,13 @@ async def scrape_jobs_in_batches(links, batch_size=5):
             browser = await p.chromium.launch(headless=True)
             
             try:
-                # Scrapuj wszystkie linki z batch'a równolegle
                 tasks = []
                 for j, url in enumerate(batch):
                     print(f"Scraping {i+j+1}/{total_links}: {url[:50]}...")
                     tasks.append(scrape_single_job(browser, url))
                 
-                # Wykonaj wszystkie zadania w batch'u
                 batch_results = await asyncio.gather(*tasks, return_exceptions=True)
                 
-                # Dodaj tylko poprawne wyniki do batch'a
                 for result in batch_results:
                     if isinstance(result, dict) and result:
                         batch_jobs.append(result)
@@ -208,7 +184,6 @@ async def scrape_jobs_in_batches(links, batch_size=5):
             finally:
                 await browser.close()
         
-        # ZAPISZ BATCH DO CSV
         if batch_jobs:
             append_to_csv(batch_jobs)
             all_jobs.extend(batch_jobs)
@@ -216,17 +191,14 @@ async def scrape_jobs_in_batches(links, batch_size=5):
         else:
             print(f"Batch {batch_num} - no data to save")
         
-        # Oblicz czasy i ETA
         batch_end_time = time.time()
         batch_duration = batch_end_time - batch_start_time
         batch_times.append(batch_duration)
         
-        # Statystyki po batch'u
         elapsed_time = batch_end_time - start_time
         completed_batches = batch_num
         remaining_batches = total_batches - batch_num
         
-        # Essential statistics only
         avg_batch_time = sum(batch_times) / len(batch_times)
         
         if remaining_batches > 0 and len(batch_times) > 0:
@@ -243,16 +215,13 @@ async def scrape_jobs_in_batches(links, batch_size=5):
             print(f"\nBATCH {batch_num} STATUS:")
             print(tabulate(stats_data, headers=["Metric", "Value"], tablefmt="grid"))
         
-        # Pause between batches - zwiększona pauza
         if i + batch_size < total_links:
             print(f"Pause 10 seconds before next batch...")
             time.sleep(10)
     
-    # Podsumowanie końcowe
     total_time = time.time() - start_time
     final_avg_batch = sum(batch_times) / len(batch_times) if batch_times else 0
     
-    # Final summary - essential data only
     final_stats = [
         ["Total Time", f"{total_time:.1f}s ({total_time/60:.1f} min)"],
         ["Jobs Collected", f"{len(all_jobs)} jobs"],
@@ -266,16 +235,14 @@ async def scrape_jobs_in_batches(links, batch_size=5):
 
 
 async def scrape_single_job(browser, url):
-    """Scrapuje pojedyncze ogłoszenie"""
     try:
         new_page = await browser.new_page()
         await new_page.goto(url, wait_until="networkidle", timeout=30000)
-        await new_page.wait_for_timeout(3000)  # Zwiększona pauza - 3 sekundy
+        await new_page.wait_for_timeout(3000)
         
         job_data = await extract_job_data(new_page, url)
         await new_page.close()
         
-        # Dodatkowa pauza po każdym ogłoszeniu
         await asyncio.sleep(1)
         return job_data
         
@@ -285,9 +252,6 @@ async def scrape_single_job(browser, url):
 
 
 async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
-    """Główna funkcja scrapowania w trybie batch - scrapuje od razu bez analizy"""
-    
-    # Sprawdź ile już mamy
     existing_count = count_existing_jobs()
     
     print(f"=== SCRAPER BATCH MODE ===")
@@ -310,13 +274,12 @@ async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
             while True:
                 print(f"\n--- PAGE {page_num}/25 ---")
                 
-                # Krok 1: Znajdź nowe linki na tej stronie
                 page = await browser.new_page()
                 url = f"https://www.olx.pl/praca/?page={page_num}"
                 print(f"Scanning: {url}")
                 
                 await page.goto(url, wait_until="networkidle", timeout=30000)
-                await page.wait_for_timeout(5000)  # Zwiększona pauza - 5 sekund
+                await page.wait_for_timeout(5000)
                 
                 job_links = await page.query_selector_all('a[href*="/oferta/praca/"]')
                 
@@ -326,14 +289,12 @@ async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
                 
                 total_found_on_site += len(job_links)
                 
-                # Znajdź nowe ogłoszenia (nie ma w datasetcie)
                 new_links = []
                 for link in job_links:
                     href = await link.get_attribute('href')
                     if href and '/oferta/praca/' in href:
                         full_url = f"https://www.olx.pl{href}" if href.startswith('/') else href
                         
-                        # Pobierz tytuł dla deduplikacji
                         try:
                             title_elem = await link.query_selector('h4')
                             if title_elem:
@@ -350,7 +311,6 @@ async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
                 print(f"Progress: {current_total}/{total_found_on_site} jobs")
                 print(f"Page {page_num}/25: Found {len(job_links)} total jobs, {len(new_links)} new jobs")
                 
-                # Krok 2: Jeśli są nowe ogłoszenia, scrapuj je od razu
                 if new_links:
                     print(f"Downloading [{len(new_links)} new jobs from page {page_num}]...")
                     page_jobs = await scrape_jobs_in_batches(new_links, batch_size)
@@ -363,19 +323,17 @@ async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
                 
                 await page.close()
                 
-                # Sprawdź czy osiągnęliśmy target_count
                 if target_count and total_scraped >= target_count:
                     print(f"Target count {target_count} reached")
                     break
                 
-                # Sprawdź czy to ostatnia strona
                 if page_num >= 25:
                     print("Reached page 25 - last page")
                     break
                     
                 page_num += 1
-                print("Waiting 8 seconds before next page...")  # Zwiększona pauza
-                time.sleep(8)  # Zwiększona pauza między stronami - 8 sekund
+                print("Waiting 8 seconds before next page...")
+                time.sleep(8)
         
         finally:
             await browser.close()
@@ -392,8 +350,6 @@ async def scrape_jobs_batch_mode(target_count=None, batch_size=5):
 
 
 async def extract_job_data(page, url):
-    """Wyciąga dane z pojedynczego ogłoszenia"""
-    
     job = {
         'id': '',
         'url': url,
@@ -408,30 +364,23 @@ async def extract_job_data(page, url):
     }
     
     try:
-        # Generuj ID z URL
         job['id'] = url.split('/')[-1].replace('.html', '')
         
-        # Tytuł
         title_elem = await page.query_selector('h1')
         if title_elem:
             title_text = await title_elem.inner_text()
             job['title'] = title_text.strip()
         
-        # Company (pierwszy tekst po H1)
         company_elem = await page.query_selector('h1 + p')
         if company_elem:
             company_text = await company_elem.inner_text()
             job['company'] = company_text.strip()
         
-        # Opis - wyczyść i sformatuj
         desc_elem = await page.query_selector('.css-1i3492')
         if desc_elem:
             desc_text = await desc_elem.inner_text()
-            # Usuń nadmiarowe białe znaki i nowe linie
             job['description'] = ' '.join(desc_text.split()).strip()
         
-        # Atrybuty z tabelki - szukaj po etykietach i pobierz wartości
-        # Wynagrodzenie
         salary_label = await page.query_selector('text="Wynagrodzenie"')
         if salary_label:
             parent = await salary_label.query_selector('xpath=..')
@@ -441,7 +390,6 @@ async def extract_job_data(page, url):
                     salary_text = await value_elem.inner_text()
                     job['salary'] = salary_text.strip()
         
-        # Lokalizacja
         location_label = await page.query_selector('text="Lokalizacja"')
         if location_label:
             parent = await location_label.query_selector('xpath=..')
@@ -451,7 +399,6 @@ async def extract_job_data(page, url):
                     location_text = await value_elem.inner_text()
                     job['location'] = location_text.strip()
         
-        # Wymiar pracy
         work_time_label = await page.query_selector('text="Wymiar pracy"')
         if work_time_label:
             parent = await work_time_label.query_selector('xpath=..')
@@ -461,7 +408,6 @@ async def extract_job_data(page, url):
                     work_time_text = await value_elem.inner_text()
                     job['work_time'] = work_time_text.strip()
         
-        # Typ umowy
         contract_label = await page.query_selector('text="Typ umowy"')
         if contract_label:
             parent = await contract_label.query_selector('xpath=..')
@@ -471,7 +417,6 @@ async def extract_job_data(page, url):
                     contract_text = await value_elem.inner_text()
                     job['contract_type'] = contract_text.strip()
         
-        # Ustaw timestamp
         job['scraped_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     except Exception as e:
@@ -481,15 +426,11 @@ async def extract_job_data(page, url):
 
 
 def save_to_csv(jobs, mode='w'):
-    """Zapisuje dane do CSV w formacie Kaggle"""
-    
-    # Uporządkowane kolumny - opis na końcu
     headers = ['id', 'url', 'title', 'company', 'salary', 'location', 'work_time', 'contract_type', 'scraped_at', 'description']
     
     with open('jobs.csv', mode, newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         
-        # Pisz header tylko przy tworzeniu nowego pliku
         if mode == 'w':
             writer.writeheader()
         
@@ -498,7 +439,6 @@ def save_to_csv(jobs, mode='w'):
 
 
 def load_existing_jobs_from_csv():
-    """Ładuje istniejące ogłoszenia z CSV"""
     existing_jobs = []
     try:
         with open('jobs.csv', 'r', encoding='utf-8') as f:
@@ -512,15 +452,12 @@ def load_existing_jobs_from_csv():
 
 
 def append_to_csv(new_jobs):
-    """Dodaje nowe ogłoszenia do istniejącego CSV"""
     if new_jobs:
         save_to_csv(new_jobs, mode='a')
         print(f"Saved {len(new_jobs)} new jobs to CSV")
 
 
 async def main():
-    """Uruchomienie scrapera w trybie batch"""
-    
     print("=== SCRAPER BATCH MODE ===")
     print("Full site scraping: All 25 pages (immediate scraping)")
     
@@ -540,7 +477,6 @@ async def main():
 
 
 async def scrape_5_jobs_quick():
-    """Szybki test - 5 ogłoszeń (stara funkcjonalność)"""
     url = "https://www.olx.pl/praca/"
     jobs = []
     

@@ -1,15 +1,3 @@
-"""
-app.py
-
-PyQt5 GUI application for job posting analysis pipeline.
-
-Features:
-- Main view with sidebar for data processing and model training
-- Try it out view for interactive predictions
-- File upload for datasets
-- Integration with data processing and model training scripts
-"""
-
 import sys
 import subprocess
 import os
@@ -17,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib
-matplotlib.use('Qt5Agg')  # Use Qt5 backend
+matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt5.QtWidgets import (
@@ -41,8 +29,7 @@ MODEL_PATH = Path("model_output/baseline_tfidf_linearsvc.joblib")
 
 
 class ProcessThread(QThread):
-    """Thread for running external scripts without freezing UI."""
-    finished = pyqtSignal(str, bool)  # message, success
+    finished = pyqtSignal(str, bool)
     
     def __init__(self, script_path, args=None):
         super().__init__()
@@ -67,7 +54,6 @@ class ProcessThread(QThread):
 
 
 class MainView(QWidget):
-    """Main view with sidebar for data processing and model training."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -77,13 +63,11 @@ class MainView(QWidget):
         layout = QHBoxLayout()
         self.setLayout(layout)
         
-        # Main content area
         content_area = QScrollArea()
         content_widget = QWidget()
         content_layout = QVBoxLayout()
         content_widget.setLayout(content_layout)
         
-        # Title
         title = QLabel("Data Processing & Model Training")
         title_font = QFont()
         title_font.setPointSize(18)
@@ -92,18 +76,14 @@ class MainView(QWidget):
         title.setAlignment(Qt.AlignCenter)
         content_layout.addWidget(title)
         
-        # Content stack - create first
         self.content_stack = QStackedWidget()
         
-        # Data Processing view (includes input dataset upload)
         processing_view = self.create_data_processing_view()
         self.content_stack.addWidget(processing_view)
         
-        # Model Training view
         model_view = self.create_model_training_view()
         self.content_stack.addWidget(model_view)
         
-        # Model Performance view
         self.model_perf_view = ModelPerformanceView()
         self.content_stack.addWidget(self.model_perf_view)
         
@@ -113,11 +93,9 @@ class MainView(QWidget):
         content_area.setWidget(content_widget)
         content_area.setWidgetResizable(True)
         
-        # Sidebar - create after content_stack
         sidebar = self.create_sidebar()
         sidebar.setMaximumWidth(300)
         
-        # Connect sidebar to content_stack
         self.category_list.currentRowChanged.connect(self.switch_content)
         self.category_list.setCurrentRow(0)
         
@@ -136,13 +114,11 @@ class MainView(QWidget):
         sidebar_layout = QVBoxLayout()
         sidebar.setLayout(sidebar_layout)
         
-        # Sidebar title
         sidebar_title = QLabel("Navigation")
         sidebar_title.setFont(QFont("Arial", 12, QFont.Bold))
         sidebar_title.setStyleSheet("color: white; padding: 10px;")
         sidebar_layout.addWidget(sidebar_title)
         
-        # Category list
         self.category_list = QListWidget()
         self.category_list.setStyleSheet("""
             QListWidget {
@@ -179,26 +155,21 @@ class MainView(QWidget):
         return sidebar
     
     def switch_content(self, index):
-        """Switch content view based on sidebar selection."""
         self.content_stack.setCurrentIndex(index)
     
     def create_data_processing_view(self):
-        """Create data processing view with dataset upload."""
         widget = QWidget()
         layout = QVBoxLayout()
         widget.setLayout(layout)
         
-        # Upload Dataset section
         upload_group = QGroupBox("Upload Dataset")
         upload_group.setFont(QFont("Arial", 12, QFont.Bold))
         upload_form_layout = QFormLayout()
         upload_group.setLayout(upload_form_layout)
         
-        # File path display
         self.dataset_path_label = QLabel("No file selected")
         self.dataset_path_label.setStyleSheet("color: #5c6bc0; padding: 5px;")
         
-        # Browse button
         browse_btn = QPushButton("Browse CSV File...")
         browse_btn.clicked.connect(self.browse_dataset)
         
@@ -207,7 +178,6 @@ class MainView(QWidget):
         path_layout.addWidget(browse_btn)
         upload_form_layout.addRow("Dataset:", path_layout)
         
-        # Info
         upload_info_label = QLabel(
             "Upload a CSV file containing job postings.\n"
             "Required columns: job_id, title, description, company_name, etc."
@@ -218,23 +188,19 @@ class MainView(QWidget):
         
         layout.addWidget(upload_group)
         
-        # Clean Datasets section
         group = QGroupBox("Clean Datasets")
         group.setFont(QFont("Arial", 12, QFont.Bold))
         group_layout = QVBoxLayout()
         group.setLayout(group_layout)
         
-        # PL button
         self.pl_btn = QPushButton("Clean PL Dataset")
         self.pl_btn.clicked.connect(self.clean_pl_dataset)
         group_layout.addWidget(self.pl_btn)
         
-        # EN button
         self.en_btn = QPushButton("Clean EN Dataset")
         self.en_btn.clicked.connect(self.clean_en_dataset)
         group_layout.addWidget(self.en_btn)
         
-        # Status/output area
         self.processing_output = QTextEdit()
         self.processing_output.setReadOnly(True)
         self.processing_output.setMaximumHeight(200)
@@ -248,7 +214,6 @@ class MainView(QWidget):
         return widget
     
     def browse_dataset(self):
-        """Open file dialog to select dataset."""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Dataset CSV",
@@ -260,7 +225,6 @@ class MainView(QWidget):
             self.dataset_path_label.setStyleSheet("color: #283593; padding: 5px; font-weight: bold;")
     
     def clean_en_dataset(self):
-        """Run clean_en_dataset.py script."""
         script_path = Path("data_processing/clean_en_dataset.py")
         if not script_path.exists():
             QMessageBox.critical(
@@ -279,7 +243,6 @@ class MainView(QWidget):
         self.process_thread.start()
     
     def clean_pl_dataset(self):
-        """Run clean_pl_dataset.py script."""
         script_path = Path("data_processing/clean_pl_dataset.py")
         if not script_path.exists():
             QMessageBox.critical(
@@ -298,7 +261,6 @@ class MainView(QWidget):
         self.pl_thread.start()
     
     def on_pl_processing_finished(self, output, success):
-        """Handle PL processing completion."""
         self.pl_btn.setEnabled(True)
         self.processing_output.append(output)
         if success:
@@ -309,7 +271,6 @@ class MainView(QWidget):
             QMessageBox.warning(self, "Error", f"PL processing failed:\n{output[:500]}")
     
     def on_processing_finished(self, output, success):
-        """Handle processing completion."""
         self.en_btn.setEnabled(True)
         self.processing_output.append(output)
         if success:
@@ -320,12 +281,10 @@ class MainView(QWidget):
             QMessageBox.warning(self, "Error", f"Processing failed:\n{output[:500]}")
     
     def create_model_training_view(self):
-        """Create model training view."""
         widget = QWidget()
         layout = QVBoxLayout()
         widget.setLayout(layout)
         
-        # Train Split section
         split_group = QGroupBox("Train Split")
         split_group.setFont(QFont("Arial", 12, QFont.Bold))
         split_layout = QVBoxLayout()
@@ -339,7 +298,6 @@ class MainView(QWidget):
         split_info.setStyleSheet("color: #5c6bc0; padding: 5px;")
         split_layout.addWidget(split_info)
         
-        # Language selector for split
         split_lang_layout = QHBoxLayout()
         split_lang_label = QLabel("Dataset:")
         split_lang_label.setStyleSheet("font-weight: bold; color: #1a237e;")
@@ -362,7 +320,6 @@ class MainView(QWidget):
         
         layout.addWidget(split_group)
         
-        # Train Baseline section
         baseline_group = QGroupBox("Train Baseline Model")
         baseline_group.setFont(QFont("Arial", 12, QFont.Bold))
         baseline_layout = QVBoxLayout()
@@ -376,7 +333,6 @@ class MainView(QWidget):
         baseline_info.setStyleSheet("color: #5c6bc0; padding: 5px;")
         baseline_layout.addWidget(baseline_info)
         
-        # Language selector for training
         baseline_lang_layout = QHBoxLayout()
         baseline_lang_label = QLabel("Dataset:")
         baseline_lang_label.setStyleSheet("font-weight: bold; color: #1a237e;")
@@ -403,7 +359,6 @@ class MainView(QWidget):
         return widget
     
     def create_train_split(self):
-        """Run make_train_split.py script."""
         script_path = Path("model/make_train_split.py")
         if not script_path.exists():
             QMessageBox.critical(
@@ -413,7 +368,6 @@ class MainView(QWidget):
             )
             return
         
-        # Get selected language
         lang = "en" if self.split_lang_combo.currentIndex() == 0 else "pl"
         
         self.split_btn.setEnabled(False)
@@ -425,7 +379,6 @@ class MainView(QWidget):
         self.split_thread.start()
     
     def on_split_finished(self, output, success):
-        """Handle split completion."""
         self.split_btn.setEnabled(True)
         self.split_output.append(output)
         if success:
@@ -436,7 +389,6 @@ class MainView(QWidget):
             QMessageBox.warning(self, "Error", f"Split failed:\n{output[:500]}")
     
     def train_baseline(self):
-        """Run train_baseline_tfidf.py script."""
         script_path = Path("model/train_baseline_tfidf.py")
         if not script_path.exists():
             QMessageBox.critical(
@@ -446,7 +398,6 @@ class MainView(QWidget):
             )
             return
         
-        # Get selected language
         lang = "en" if self.baseline_lang_combo.currentIndex() == 0 else "pl"
         
         self.baseline_btn.setEnabled(False)
@@ -458,7 +409,6 @@ class MainView(QWidget):
         self.baseline_thread.start()
     
     def on_baseline_finished(self, output, success):
-        """Handle baseline training completion."""
         self.baseline_btn.setEnabled(True)
         self.baseline_output.append(output)
         if success:
@@ -470,22 +420,20 @@ class MainView(QWidget):
 
 
 class TryItOutView(QWidget):
-    """View for interactive predictions."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.model = None
-        self.lang = "en"  # Default language
-        self.test_cases = {}  # Store parsed test cases
+        self.lang = "en"
+        self.test_cases = {}
         self.init_ui()
         self.load_model()
-        self.load_test_cases()  # Load test cases after UI is initialized
+        self.load_test_cases()
     
     def init_ui(self):
         layout = QVBoxLayout()
         self.setLayout(layout)
         
-        # Title
         title = QLabel("Try It Out - Experience Level Predictor")
         title_font = QFont()
         title_font.setPointSize(18)
@@ -494,26 +442,23 @@ class TryItOutView(QWidget):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
         
-        # Language selector
         lang_layout = QHBoxLayout()
         lang_label = QLabel("Model Language:")
         lang_label.setFont(QFont("Arial", 10, QFont.Bold))
         lang_label.setStyleSheet("color: #1a237e;")
         self.lang_combo = QComboBox()
         self.lang_combo.addItems(["EN (English)", "PL (Polish)"])
-        self.lang_combo.setCurrentIndex(0)  # Default to EN
+        self.lang_combo.setCurrentIndex(0)
         self.lang_combo.currentIndexChanged.connect(self.on_lang_changed)
         lang_layout.addWidget(lang_label)
         lang_layout.addWidget(self.lang_combo)
         lang_layout.addStretch()
         layout.addLayout(lang_layout)
         
-        # Model status
         self.status_label = QLabel("Model: Not loaded")
         self.status_label.setStyleSheet("color: #7986cb; font-weight: bold; padding: 5px;")
         layout.addWidget(self.status_label)
         
-        # Test Prompts section
         test_prompts_group = QGroupBox("Test Prompts")
         test_prompts_group.setFont(QFont("Arial", 10, QFont.Bold))
         test_prompts_layout = QVBoxLayout()
@@ -529,7 +474,6 @@ class TryItOutView(QWidget):
         
         layout.addWidget(test_prompts_group)
         
-        # Input fields
         title_input_label = QLabel("Job Title:")
         title_input_label.setFont(QFont("Arial", 10, QFont.Bold))
         layout.addWidget(title_input_label)
@@ -547,7 +491,6 @@ class TryItOutView(QWidget):
         self.desc_input.setPlaceholderText("Enter job description...")
         layout.addWidget(self.desc_input)
         
-        # Buttons
         button_layout = QHBoxLayout()
         
         self.predict_btn = QPushButton("Predict Experience Level")
@@ -570,7 +513,6 @@ class TryItOutView(QWidget):
         
         layout.addLayout(button_layout)
         
-        # Result
         result_label = QLabel("Prediction Result:")
         result_label.setFont(QFont("Arial", 10, QFont.Bold))
         layout.addWidget(result_label)
@@ -584,13 +526,11 @@ class TryItOutView(QWidget):
         self.result_display.setWordWrap(True)
         layout.addWidget(self.result_display)
         
-        # Load model button
         load_model_btn = QPushButton("Load Model from File...")
         load_model_btn.clicked.connect(self.load_model_from_file)
         layout.addWidget(load_model_btn)
     
     def parse_test_prompts(self, lang):
-        """Parse test prompts JSON file for given language."""
         file_path = Path(f"test_prompts/{lang}_tests.json")
         test_cases = {}
         
@@ -601,7 +541,6 @@ class TryItOutView(QWidget):
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # JSON is an array of objects with: id, expected, title, description
             for item in data:
                 case_id = item.get("id", "")
                 if case_id:
@@ -616,14 +555,11 @@ class TryItOutView(QWidget):
         return test_cases
     
     def load_test_cases(self):
-        """Load test cases for current language."""
         self.test_cases = self.parse_test_prompts(self.lang)
         
-        # Update combo box
         self.test_cases_combo.clear()
         if self.test_cases:
             for case_name in sorted(self.test_cases.keys()):
-                # Create display name: case_name + expected if available
                 case_data = self.test_cases[case_name]
                 display_name = case_name
                 if case_data.get("expected"):
@@ -633,7 +569,6 @@ class TryItOutView(QWidget):
             self.test_cases_combo.addItem("No test cases available", None)
     
     def on_test_case_selected(self, index):
-        """Handle test case selection - fill form instantly."""
         if index < 0 or not self.test_cases:
             return
         
@@ -643,21 +578,17 @@ class TryItOutView(QWidget):
         
         case_data = self.test_cases[case_name]
         
-        # Fill form instantly
         self.title_input.setPlainText(case_data.get("title", ""))
         self.desc_input.setPlainText(case_data.get("desc", ""))
     
     def on_lang_changed(self, index):
-        """Handle language change."""
         self.lang = "en" if index == 0 else "pl"
         self.load_model()
-        self.load_test_cases()  # Reload test cases for new language
+        self.load_test_cases()
     
     def load_model(self):
-        """Load model from default path based on selected language."""
         import joblib
         
-        # Determine model path based on language
         if self.lang == "pl":
             model_path = Path("model_output/baseline_tfidf_linearsvc_pl.joblib")
         else:
@@ -679,7 +610,6 @@ class TryItOutView(QWidget):
             self.predict_btn.setEnabled(False)
     
     def load_model_from_file(self):
-        """Load model from file dialog."""
         import joblib
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -700,14 +630,11 @@ class TryItOutView(QWidget):
                 QMessageBox.critical(self, "Error", f"Failed to load model:\n{str(e)}")
     
     def extract_years_bucket(self, text: str) -> str:
-        """Extract years bucket from text (e.g., '2 years' -> 'YEARS_2_3')."""
         import re
-        # Find all numbers followed by "years" or "yrs"
         matches = re.findall(r"(\d+)\s*(?:\+?\s*)?(?:years?|yrs?)\b", text.lower())
         if not matches:
             return "YEARS_NONE"
         
-        # Take the maximum years mentioned
         max_years = max([int(m) for m in matches])
         
         if max_years <= 1:
@@ -722,19 +649,15 @@ class TryItOutView(QWidget):
             return "YEARS_9_PLUS"
     
     def get_topk_predictions(self, model, text, k=3):
-        """Get top-k predictions with scores."""
         import numpy as np
         try:
-            # Try to get decision function (SVM)
             if hasattr(model, 'decision_function'):
                 scores = model.decision_function([text])[0]
-                # Get classifier from pipeline if needed
                 if hasattr(model, 'named_steps'):
                     svm = model.named_steps.get('svm', None)
                     if svm is not None and hasattr(svm, 'classes_'):
                         classes = svm.classes_
                     else:
-                        # Fallback: try to get classes from model
                         classes = model.classes_ if hasattr(model, 'classes_') else None
                 else:
                     classes = model.classes_ if hasattr(model, 'classes_') else None
@@ -746,7 +669,6 @@ class TryItOutView(QWidget):
         except Exception:
             pass
         
-        # Fallback: use predict_proba if available
         try:
             if hasattr(model, 'predict_proba'):
                 proba = model.predict_proba([text])[0]
@@ -770,7 +692,6 @@ class TryItOutView(QWidget):
         return None
     
     def predict(self):
-        """Predict experience level."""
         if self.model is None:
             QMessageBox.warning(self, "No Model", "Please load a model first.")
             return
@@ -782,39 +703,30 @@ class TryItOutView(QWidget):
             QMessageBox.warning(self, "Empty Input", "Please enter at least a job title or description.")
             return
         
-        # Extract years bucket from combined text
         combined_text = f"{title} {description}".strip()
         years_bucket = self.extract_years_bucket(combined_text)
         
-        # Build text in same format as training: title + \n + description + \n + years_bucket
         text = f"{title}\n{description}\n{years_bucket}".strip()
         
-        # Check input length
         word_count = len(text.split())
         is_short = word_count < 25
         
         try:
             prediction = self.model.predict([text])[0]
             
-            # Get top-k predictions for display
             topk = self.get_topk_predictions(self.model, text, k=3)
             
-            # Build result text
             result_parts = [f"Predicted Experience Level: {prediction.upper()}"]
             
             
-            # Add top-k scores if available
             if topk:
                 result_parts.append("\n\nTop 3 Predictions (decision scores):")
                 for i, (label, score) in enumerate(topk, 1):
-                    # Decision function scores from LinearSVC (distance from hyperplane, can be negative)
-                    # Higher = more confident, can be negative
                     score_str = f"{score:.2f}"
                     result_parts.append(f"{i}. {label.upper()}: {score_str}")
             
             result_text = "\n".join(result_parts)
             
-            # Navy blue color scheme for different experience levels
             color_map = {
                 "intern": "#9fa8da",      # Light indigo
                 "junior": "#7986cb",      # Medium indigo
@@ -826,7 +738,6 @@ class TryItOutView(QWidget):
             }
             color = color_map.get(prediction.lower(), "#5c6bc0")
             
-            # Adjust border color if short input (make it more warning-like)
             border_color = "#ff9800" if is_short else color
             
             self.result_display.setText(result_text)
@@ -839,7 +750,6 @@ class TryItOutView(QWidget):
             QMessageBox.critical(self, "Prediction Error", f"An error occurred:\n{str(e)}")
     
     def clear_inputs(self):
-        """Clear all inputs."""
         self.title_input.clear()
         self.desc_input.clear()
         self.result_display.setText("Enter job title and description, then click 'Predict'")
@@ -850,7 +760,6 @@ class TryItOutView(QWidget):
 
 
 class DatasetStatisticsView(QWidget):
-    """View for dataset statistics and visualizations."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -858,7 +767,7 @@ class DatasetStatisticsView(QWidget):
         self.df_train = None
         self.df_val = None
         self.df_test = None
-        self.dataset_type = "EN"  # "EN" or "PL"
+        self.dataset_type = "EN"
         self.init_ui()
         self.load_data()
     
@@ -875,17 +784,15 @@ class DatasetStatisticsView(QWidget):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
         
-        # Scroll area for content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout()
-        scroll_layout.setSpacing(20)  # Add spacing between sections
+        scroll_layout.setSpacing(20)
         scroll_widget.setLayout(scroll_layout)
         
-        # Dataset selector
         selector_layout = QHBoxLayout()
         selector_label = QLabel("Dataset:")
         selector_label.setStyleSheet("font-weight: bold; color: #1a237e;")
@@ -897,33 +804,25 @@ class DatasetStatisticsView(QWidget):
         selector_layout.addStretch()
         scroll_layout.addLayout(selector_layout)
         
-        # Load data button
         load_btn = QPushButton("Reload Data")
         load_btn.clicked.connect(self.load_data)
         scroll_layout.addWidget(load_btn)
         
-        # Status label
         self.status_label = QLabel("Loading data...")
         self.status_label.setStyleSheet("color: #5c6bc0; padding: 5px;")
         scroll_layout.addWidget(self.status_label)
         
-        # Overview section
         self.overview_group = self.create_overview_section()
         scroll_layout.addWidget(self.overview_group)
         
-        # Label distribution section
         self.label_group = self.create_label_distribution_section()
         scroll_layout.addWidget(self.label_group)
         
-        # Text statistics section
         self.text_group = self.create_text_statistics_section()
         scroll_layout.addWidget(self.text_group)
         
-        # Work arrangement section
         self.work_group = self.create_work_arrangement_section()
         scroll_layout.addWidget(self.work_group)
-        
-        # Time section
         
         scroll_layout.addStretch()
         
@@ -931,18 +830,15 @@ class DatasetStatisticsView(QWidget):
         layout.addWidget(scroll)
     
     def on_dataset_changed(self, index):
-        """Handle dataset type change."""
         self.dataset_type = "EN" if index == 0 else "PL"
         self.load_data()
     
     def load_data(self):
-        """Load dataset files based on selected dataset type."""
         self.status_label.setText("Loading data...")
         self.status_label.setStyleSheet("color: #5c6bc0; padding: 5px;")
         
         try:
             if self.dataset_type == "EN":
-                # Try to load cleaned EN dataset
                 clean_path = Path("en_dataset/en_jobs_clean.csv")
                 if not clean_path.exists():
                     clean_path = Path("data_processing/en_jobs_clean.csv")
@@ -956,7 +852,6 @@ class DatasetStatisticsView(QWidget):
                     self.status_label.setStyleSheet("color: #7986cb; padding: 5px;")
                     self.df = None
                 
-                # Try to load EN splits
                 for split_name, attr_name in [("en_train.csv", "df_train"), 
                                              ("en_val.csv", "df_val"), 
                                              ("en_test.csv", "df_test")]:
@@ -982,7 +877,6 @@ class DatasetStatisticsView(QWidget):
                     else:
                         setattr(self, attr_name, None)
             else:
-                # Load PL dataset
                 clean_path = Path("pl_dataset/pl_jobs_clean.csv")
                 if not clean_path.exists():
                     clean_path = Path("data_processing/pl_jobs_clean.csv")
@@ -996,12 +890,10 @@ class DatasetStatisticsView(QWidget):
                     self.status_label.setStyleSheet("color: #7986cb; padding: 5px;")
                     self.df = None
                 
-                # PL doesn't have splits yet, set to None
                 self.df_train = None
                 self.df_val = None
                 self.df_test = None
             
-            # Update all visualizations
             self.update_overview()
             self.update_label_distribution()
             self.update_text_statistics()
@@ -1012,13 +904,11 @@ class DatasetStatisticsView(QWidget):
             self.status_label.setStyleSheet("color: #7986cb; padding: 5px;")
     
     def create_overview_section(self):
-        """Create overview/quality gates section."""
         group = QGroupBox("Overview & Quality Gates")
         group.setFont(QFont("Arial", 12, QFont.Bold))
         layout = QVBoxLayout()
         group.setLayout(layout)
         
-        # Metrics grid
         metrics_grid = QGridLayout()
         self.metric_labels = {}
         
@@ -1041,7 +931,6 @@ class DatasetStatisticsView(QWidget):
         
         layout.addLayout(metrics_grid)
         
-        # Missingness chart
         missing_label = QLabel("Missing Data by Column:")
         missing_label.setStyleSheet("font-weight: bold; color: #1a237e; margin-top: 10px;")
         layout.addWidget(missing_label)
@@ -1054,20 +943,17 @@ class DatasetStatisticsView(QWidget):
         return group
     
     def create_label_distribution_section(self):
-        """Create label distribution section."""
         group = QGroupBox("Label Distribution")
         group.setFont(QFont("Arial", 12, QFont.Bold))
         layout = QVBoxLayout()
         layout.setSpacing(10)
         group.setLayout(layout)
         
-        # Class distribution chart
         self.label_dist_canvas = FigureCanvas(Figure(figsize=(10, 5)))
         self.label_dist_canvas.setStyleSheet("background-color: white;")
         self.label_dist_canvas.setFixedHeight(500)
         layout.addWidget(self.label_dist_canvas)
         
-        # Split distribution chart
         split_label = QLabel("Label Distribution by Split:")
         split_label.setStyleSheet("font-weight: bold; color: #1a237e; margin-top: 10px;")
         layout.addWidget(split_label)
@@ -1080,14 +966,12 @@ class DatasetStatisticsView(QWidget):
         return group
     
     def create_text_statistics_section(self):
-        """Create text statistics section."""
         group = QGroupBox("Text Statistics")
         group.setFont(QFont("Arial", 12, QFont.Bold))
         layout = QVBoxLayout()
         layout.setSpacing(10)
         group.setLayout(layout)
         
-        # Text length histogram
         length_label = QLabel("Description Length Distribution:")
         length_label.setStyleSheet("font-weight: bold; color: #1a237e;")
         layout.addWidget(length_label)
@@ -1097,7 +981,6 @@ class DatasetStatisticsView(QWidget):
         self.text_length_canvas.setFixedHeight(400)
         layout.addWidget(self.text_length_canvas)
         
-        # Text length by class
         by_class_label = QLabel("Description Length by Experience Level:")
         by_class_label.setStyleSheet("font-weight: bold; color: #1a237e; margin-top: 10px;")
         layout.addWidget(by_class_label)
@@ -1110,14 +993,12 @@ class DatasetStatisticsView(QWidget):
         return group
     
     def create_work_arrangement_section(self):
-        """Create work arrangement & compensation section."""
         group = QGroupBox("Work Arrangement & Compensation")
         group.setFont(QFont("Arial", 12, QFont.Bold))
         layout = QVBoxLayout()
         layout.setSpacing(10)
         group.setLayout(layout)
         
-        # Work type distribution
         work_type_label = QLabel("Work Type Distribution:")
         work_type_label.setStyleSheet("font-weight: bold; color: #1a237e;")
         layout.addWidget(work_type_label)
@@ -1127,7 +1008,6 @@ class DatasetStatisticsView(QWidget):
         self.work_type_canvas.setFixedHeight(500)
         layout.addWidget(self.work_type_canvas)
         
-        # Remote distribution
         remote_label = QLabel("Remote Allowed Distribution:")
         remote_label.setStyleSheet("font-weight: bold; color: #1a237e; margin-top: 10px;")
         layout.addWidget(remote_label)
@@ -1137,7 +1017,6 @@ class DatasetStatisticsView(QWidget):
         self.remote_canvas.setFixedHeight(400)
         layout.addWidget(self.remote_canvas)
         
-        # Salary distribution
         salary_label = QLabel("Salary Distribution (Annual):")
         salary_label.setStyleSheet("font-weight: bold; color: #1a237e; margin-top: 10px;")
         layout.addWidget(salary_label)
@@ -1150,11 +1029,9 @@ class DatasetStatisticsView(QWidget):
         return group
     
     def update_overview(self):
-        """Update overview metrics and charts."""
         if self.df is None:
             return
         
-        # Calculate metrics
         raw_rows = len(self.df)
         
         if self.dataset_type == "EN":
@@ -1165,7 +1042,6 @@ class DatasetStatisticsView(QWidget):
             cov_title = self.df["title_hint"].notna().mean() * 100 if "title_hint" in self.df.columns else 0
             cov_platform = self.df["platform_experience_label"].notna().mean() * 100 if "platform_experience_label" in self.df.columns else 0
             
-            # Update labels
             self.metric_labels["Raw Rows"].setText(f"{raw_rows:,}")
             self.metric_labels["Rows with Platform Label"].setText(f"{rows_with_label:,}")
             self.metric_labels["Rows without Platform Label"].setText(f"{rows_without_label:,}")
@@ -1173,7 +1049,6 @@ class DatasetStatisticsView(QWidget):
             self.metric_labels["Title Hint Coverage"].setText(f"{cov_title:.1f}%")
             self.metric_labels["Platform Label Coverage"].setText(f"{cov_platform:.1f}%")
         else:
-            # PL-specific metrics
             rows_with_label = self.df["experience_label"].notna().sum() if "experience_label" in self.df.columns else 0
             rows_without_label = raw_rows - rows_with_label
             
@@ -1184,7 +1059,6 @@ class DatasetStatisticsView(QWidget):
             cov_remote = self.df["remote_allowed"].notna().mean() * 100 if "remote_allowed" in self.df.columns else 0
             pct_salary_suspect = (self.df["salary_suspect"].sum() / len(self.df) * 100) if "salary_suspect" in self.df.columns else 0
             
-            # Update labels (PL has different metrics)
             self.metric_labels["Raw Rows"].setText(f"{raw_rows:,}")
             self.metric_labels["Rows with Platform Label"].setText(f"{rows_with_label:,}")
             self.metric_labels["Rows without Platform Label"].setText(f"{rows_without_label:,}")
@@ -1192,7 +1066,6 @@ class DatasetStatisticsView(QWidget):
             self.metric_labels["Title Hint Coverage"].setText(f"{cov_title:.1f}%")
             self.metric_labels["Platform Label Coverage"].setText(f"{cov_experience:.1f}%")
         
-        # Missingness chart
         if self.dataset_type == "EN":
             key_cols = ["title", "description_clean", "salary_annual_min", "salary_annual_max", 
                        "pay_period", "work_type", "remote_allowed", "location"]
@@ -1220,11 +1093,9 @@ class DatasetStatisticsView(QWidget):
             self.missing_canvas.draw()
     
     def update_label_distribution(self):
-        """Update label distribution charts."""
         if self.df is None:
             return
         
-        # Determine label column based on dataset type
         if self.dataset_type == "EN":
             label_col = "platform_experience_label"
         else:
@@ -1237,7 +1108,6 @@ class DatasetStatisticsView(QWidget):
         if len(silver) == 0:
             return
         
-        # Class distribution
         label_counts = silver[label_col].value_counts()
         label_props = silver[label_col].value_counts(normalize=True) * 100
         
@@ -1252,7 +1122,6 @@ class DatasetStatisticsView(QWidget):
         fig.tight_layout()
         self.label_dist_canvas.draw()
         
-        # Split distribution (only for EN)
         fig = self.split_dist_canvas.figure
         fig.clear()
         ax = fig.add_subplot(111)
@@ -1264,7 +1133,6 @@ class DatasetStatisticsView(QWidget):
                 'Test': self.df_test
             }
             
-            # Get all unique labels from all splits
             all_labels = set()
             for split_df in splits.values():
                 if "platform_experience_label" in split_df.columns:
@@ -1309,7 +1177,6 @@ class DatasetStatisticsView(QWidget):
         self.split_dist_canvas.draw()
     
     def update_text_statistics(self):
-        """Update text statistics charts."""
         if self.df is None or "platform_experience_label" not in self.df.columns:
             return
         
@@ -1317,7 +1184,6 @@ class DatasetStatisticsView(QWidget):
         if len(silver) == 0:
             return
         
-        # Calculate word count if description_clean exists
         if "description_clean" in silver.columns:
             silver["word_count"] = silver["description_clean"].fillna("").astype(str).str.split().str.len()
         elif "desc_len" in silver.columns:
@@ -1337,7 +1203,6 @@ class DatasetStatisticsView(QWidget):
         fig.tight_layout()
         self.text_length_canvas.draw()
         
-        # Text length by class
         fig = self.text_by_class_canvas.figure
         fig.clear()
         ax = fig.add_subplot(111)
@@ -1358,13 +1223,11 @@ class DatasetStatisticsView(QWidget):
         self.text_by_class_canvas.draw()
     
     def update_work_arrangement(self):
-        """Update work arrangement charts."""
         if self.df is None:
             return
         
         silver = self.df[self.df["platform_experience_label"].notna()].copy() if "platform_experience_label" in self.df.columns else self.df.copy()
         
-        # Work type distribution
         if "work_type" in silver.columns:
             work_counts = silver["work_type"].value_counts()
             fig = self.work_type_canvas.figure
@@ -1378,7 +1241,6 @@ class DatasetStatisticsView(QWidget):
             fig.tight_layout()
             self.work_type_canvas.draw()
         
-        # Remote distribution
         if "remote_allowed" in silver.columns:
             remote_counts = silver["remote_allowed"].value_counts()
             fig = self.remote_canvas.figure
@@ -1391,7 +1253,6 @@ class DatasetStatisticsView(QWidget):
             fig.tight_layout()
             self.remote_canvas.draw()
         
-        # Salary distribution
         if "salary_annual_min" in silver.columns and "salary_annual_max" in silver.columns:
             silver["salary_mid"] = np.where(
                 silver["salary_annual_min"].notna() & silver["salary_annual_max"].notna(),
@@ -1400,7 +1261,6 @@ class DatasetStatisticsView(QWidget):
             )
             salary_data = silver["salary_mid"].dropna()
             if len(salary_data) > 0:
-                # Filter outliers (99th percentile)
                 p99 = salary_data.quantile(0.99)
                 salary_data = salary_data[salary_data <= p99]
                 
@@ -1416,7 +1276,6 @@ class DatasetStatisticsView(QWidget):
                 self.salary_canvas.draw()
     
 class ModelPerformanceView(QWidget):
-    """View for displaying model performance metrics and visualizations."""
     
     def __init__(self):
         super().__init__()
@@ -1426,12 +1285,10 @@ class ModelPerformanceView(QWidget):
         self.init_ui()
     
     def init_ui(self):
-        """Initialize the UI."""
         layout = QVBoxLayout()
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        # Language selector
         lang_layout = QHBoxLayout()
         lang_label = QLabel("Language:")
         lang_label.setStyleSheet("font-weight: bold; color: #1a237e;")
@@ -1444,7 +1301,6 @@ class ModelPerformanceView(QWidget):
         lang_layout.addStretch()
         layout.addLayout(lang_layout)
         
-        # Scroll area for content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -1455,19 +1311,14 @@ class ModelPerformanceView(QWidget):
         content_layout.setSpacing(20)
         content_widget.setLayout(content_layout)
         
-        # Overview section (metrics cards)
         content_layout.addWidget(self.create_overview_section())
         
-        # Confusion matrix
         content_layout.addWidget(self.create_confusion_matrix_section())
         
-        # Per-class metrics
         content_layout.addWidget(self.create_per_class_section())
         
-        # CV metrics (if available)
         content_layout.addWidget(self.create_cv_metrics_section())
         
-        # Error table
         content_layout.addWidget(self.create_error_table_section())
         
         content_layout.addStretch()
@@ -1476,17 +1327,14 @@ class ModelPerformanceView(QWidget):
         
         self.setLayout(layout)
         
-        # Load initial data
         self.load_data()
     
     def create_overview_section(self):
-        """Create overview section with metric cards."""
         group = QGroupBox("Model Performance Overview")
         group.setFont(QFont("Arial", 12, QFont.Bold))
         layout = QVBoxLayout()
         group.setLayout(layout)
         
-        # Dataset info
         info_layout = QGridLayout()
         self.info_labels = {}
         info_fields = ["Language", "Label Column", "Train Size", "Val Size", "Test Size", "Number of Classes"]
@@ -1505,10 +1353,8 @@ class ModelPerformanceView(QWidget):
         
         layout.addLayout(info_layout)
         
-        # Metrics cards
         metrics_layout = QHBoxLayout()
         
-        # Test metrics
         test_group = QGroupBox("Test Metrics")
         test_group.setStyleSheet("QGroupBox { font-weight: bold; }")
         test_layout = QVBoxLayout()
@@ -1524,7 +1370,6 @@ class ModelPerformanceView(QWidget):
         test_group.setLayout(test_layout)
         metrics_layout.addWidget(test_group)
         
-        # Val metrics
         val_group = QGroupBox("Validation Metrics")
         val_group.setStyleSheet("QGroupBox { font-weight: bold; }")
         val_layout = QVBoxLayout()
@@ -1545,7 +1390,6 @@ class ModelPerformanceView(QWidget):
         return group
     
     def create_confusion_matrix_section(self):
-        """Create confusion matrix section."""
         group = QGroupBox("Confusion Matrix")
         group.setFont(QFont("Arial", 12, QFont.Bold))
         layout = QVBoxLayout()
@@ -1559,7 +1403,6 @@ class ModelPerformanceView(QWidget):
         return group
     
     def create_per_class_section(self):
-        """Create per-class metrics section."""
         group = QGroupBox("Per-Class Metrics")
         group.setFont(QFont("Arial", 12, QFont.Bold))
         layout = QVBoxLayout()
@@ -1575,7 +1418,6 @@ class ModelPerformanceView(QWidget):
         self.f1_canvas.setFixedHeight(400)
         layout.addWidget(self.f1_canvas)
         
-        # Recall per class
         recall_label = QLabel("Recall by Class:")
         recall_label.setStyleSheet("font-weight: bold; color: #1a237e; margin-top: 10px;")
         layout.addWidget(recall_label)
@@ -1588,7 +1430,6 @@ class ModelPerformanceView(QWidget):
         return group
     
     def create_cv_metrics_section(self):
-        """Create CV metrics section."""
         group = QGroupBox("Cross-Validation Metrics (Stability)")
         group.setFont(QFont("Arial", 12, QFont.Bold))
         layout = QVBoxLayout()
@@ -1612,7 +1453,6 @@ class ModelPerformanceView(QWidget):
         
         layout.addLayout(cv_layout)
         
-        # Stability info
         stability_label = QLabel("Stability (lower std = more stable):")
         stability_label.setStyleSheet("font-weight: bold; color: #1a237e; margin-top: 10px;")
         layout.addWidget(stability_label)
@@ -1638,13 +1478,11 @@ class ModelPerformanceView(QWidget):
         return group
     
     def create_error_table_section(self):
-        """Create error table section."""
         group = QGroupBox("Prediction Errors (Test Set)")
         group.setFont(QFont("Arial", 12, QFont.Bold))
         layout = QVBoxLayout()
         group.setLayout(layout)
         
-        # Filter options
         filter_layout = QHBoxLayout()
         filter_label = QLabel("Show:")
         filter_label.setStyleSheet("font-weight: bold; color: #1a237e;")
@@ -1656,7 +1494,6 @@ class ModelPerformanceView(QWidget):
         filter_layout.addStretch()
         layout.addLayout(filter_layout)
         
-        # Table (using QTextEdit as simple table)
         self.error_table = QTextEdit()
         self.error_table.setReadOnly(True)
         self.error_table.setStyleSheet("background-color: white; font-family: monospace;")
@@ -1666,21 +1503,16 @@ class ModelPerformanceView(QWidget):
         return group
     
     def on_lang_changed(self, lang_text):
-        """Handle language change."""
         self.lang = lang_text.lower()
         self.load_data()
     
     def load_data(self):
-        """Load metrics and predictions data."""
         metrics_path = Path(f"model_output/metrics_{self.lang}.json")
-        # For EN, file is baseline_test_predictions.csv (without _en suffix)
-        # For PL, file is baseline_test_predictions_pl.csv
         if self.lang == "en":
             pred_path = Path("model_output/baseline_test_predictions.csv")
         else:
             pred_path = Path(f"model_output/baseline_test_predictions_{self.lang}.csv")
         
-        # Load metrics
         if metrics_path.exists():
             try:
                 with open(metrics_path, 'r', encoding='utf-8') as f:
@@ -1691,7 +1523,6 @@ class ModelPerformanceView(QWidget):
         else:
             self.metrics_data = None
         
-        # Load predictions
         if pred_path.exists():
             try:
                 self.predictions_df = pd.read_csv(pred_path, low_memory=False)
@@ -1701,7 +1532,6 @@ class ModelPerformanceView(QWidget):
         else:
             self.predictions_df = None
         
-        # Update UI
         self.update_overview()
         self.update_confusion_matrix()
         self.update_per_class_metrics()
@@ -1709,11 +1539,9 @@ class ModelPerformanceView(QWidget):
         self.update_error_table()
     
     def update_overview(self):
-        """Update overview section."""
         if self.metrics_data is None:
             return
         
-        # Update info labels
         self.info_labels["Language"].setText(self.metrics_data.get("lang", "N/A"))
         self.info_labels["Label Column"].setText(self.metrics_data.get("label_col", "N/A"))
         self.info_labels["Train Size"].setText(str(self.metrics_data.get("n_train", "N/A")))
@@ -1721,20 +1549,17 @@ class ModelPerformanceView(QWidget):
         self.info_labels["Test Size"].setText(str(self.metrics_data.get("n_test", "N/A")))
         self.info_labels["Number of Classes"].setText(str(self.metrics_data.get("n_classes", "N/A")))
         
-        # Update test metrics
         test_metrics = self.metrics_data.get("test_metrics", {})
         self.test_labels["Accuracy"].setText(f"{test_metrics.get('accuracy', 0):.3f}")
         self.test_labels["F1 Macro"].setText(f"{test_metrics.get('f1_macro', 0):.3f}")
         self.test_labels["F1 Weighted"].setText(f"{test_metrics.get('f1_weighted', 0):.3f}")
         
-        # Update val metrics
         val_metrics = self.metrics_data.get("val_metrics", {})
         self.val_labels["Accuracy"].setText(f"{val_metrics.get('accuracy', 0):.3f}")
         self.val_labels["F1 Macro"].setText(f"{val_metrics.get('f1_macro', 0):.3f}")
         self.val_labels["F1 Weighted"].setText(f"{val_metrics.get('f1_weighted', 0):.3f}")
     
     def update_confusion_matrix(self):
-        """Update confusion matrix plot."""
         if self.metrics_data is None:
             return
         
@@ -1748,23 +1573,19 @@ class ModelPerformanceView(QWidget):
         fig.clear()
         ax = fig.add_subplot(111)
         
-        # Convert to numpy array
         cm_array = np.array(cm)
         
-        # Create heatmap (use matplotlib if seaborn not available)
         if HAS_SEABORN:
             sns.heatmap(cm_array, annot=True, fmt='d', cmap='Blues', ax=ax,
                        xticklabels=labels, yticklabels=labels,
                        cbar_kws={'label': 'Count'})
         else:
-            # Fallback to matplotlib imshow
             im = ax.imshow(cm_array, cmap='Blues', aspect='auto')
             ax.set_xticks(range(len(labels)))
             ax.set_yticks(range(len(labels)))
             ax.set_xticklabels(labels)
             ax.set_yticklabels(labels)
             
-            # Add text annotations
             for i in range(len(labels)):
                 for j in range(len(labels)):
                     text = ax.text(j, i, int(cm_array[i, j]),
@@ -1782,7 +1603,6 @@ class ModelPerformanceView(QWidget):
         self.confusion_canvas.draw()
     
     def update_per_class_metrics(self):
-        """Update per-class metrics plots."""
         if self.metrics_data is None:
             return
         
@@ -1790,13 +1610,11 @@ class ModelPerformanceView(QWidget):
         if not per_class:
             return
         
-        # Extract data
         classes = list(per_class.keys())
         f1_scores = [per_class[c].get("f1", 0) for c in classes]
         recalls = [per_class[c].get("recall", 0) for c in classes]
         supports = [per_class[c].get("support", 0) for c in classes]
         
-        # F1 plot
         fig = self.f1_canvas.figure
         fig.clear()
         ax = fig.add_subplot(111)
@@ -1817,7 +1635,6 @@ class ModelPerformanceView(QWidget):
         fig.tight_layout()
         self.f1_canvas.draw()
         
-        # Recall plot
         fig = self.recall_canvas.figure
         fig.clear()
         ax = fig.add_subplot(111)
@@ -1839,16 +1656,13 @@ class ModelPerformanceView(QWidget):
         self.recall_canvas.draw()
     
     def update_cv_metrics(self):
-        """Update CV metrics section."""
         if self.metrics_data is None:
             return
         
         cv_metrics = self.metrics_data.get("cv_metrics")
         if cv_metrics is None:
-            # Hide CV section if not available
             return
         
-        # Update CV labels
         self.cv_labels["CV Accuracy"].setText(
             f"{cv_metrics.get('cv_accuracy_mean', 0):.3f} ± {cv_metrics.get('cv_accuracy_std', 0):.3f}"
         )
@@ -1859,20 +1673,17 @@ class ModelPerformanceView(QWidget):
             f"{cv_metrics.get('cv_f1_weighted_mean', 0):.3f} ± {cv_metrics.get('cv_f1_weighted_std', 0):.3f}"
         )
         
-        # Update stability labels
         stability = self.metrics_data.get("stability", {})
         self.stability_labels["F1 Macro Std"].setText(f"{stability.get('f1_macro_std', 0):.4f}")
         self.stability_labels["Accuracy Std"].setText(f"{stability.get('accuracy_std', 0):.4f}")
     
     def update_error_table(self):
-        """Update error table."""
         if self.predictions_df is None:
             self.error_table.setText("No predictions data available.")
             return
         
         filter_text = self.error_filter_combo.currentText()
         
-        # Filter data
         if filter_text == "Errors Only":
             df = self.predictions_df[~self.predictions_df["correct"]].copy()
         elif filter_text == "Correct Only":
@@ -1884,16 +1695,13 @@ class ModelPerformanceView(QWidget):
             self.error_table.setText(f"No {filter_text.lower()} predictions found.")
             return
         
-        # Format as table
         cols = ["job_id", "title", "true_label", "predicted_label", "correct"]
         available_cols = [c for c in cols if c in df.columns]
         
-        # Create header
         header = " | ".join([col.ljust(20) for col in available_cols])
         separator = "-" * len(header)
         lines = [header, separator]
         
-        # Add rows (limit to 50 for performance)
         for _, row in df.head(50).iterrows():
             line = " | ".join([str(row.get(col, "")).ljust(20)[:20] for col in available_cols])
             lines.append(line)
@@ -1905,7 +1713,6 @@ class ModelPerformanceView(QWidget):
 
 
 class MainWindow(QMainWindow):
-    """Main application window."""
     
     def __init__(self):
         super().__init__()
@@ -1915,29 +1722,23 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Job Posting Analysis Pipeline")
         self.setGeometry(100, 100, 1200, 800)
         
-        # Navbar
         navbar = self.create_navbar()
         self.addToolBar(Qt.TopToolBarArea, navbar)
         
-        # Stacked widget for views
         self.stack = QStackedWidget()
         
-        # Main view
         self.main_view = MainView()
         self.stack.addWidget(self.main_view)
         
-        # Try it out view
         self.try_it_view = TryItOutView()
         self.stack.addWidget(self.try_it_view)
         
-        # Dataset Statistics view
         self.stats_view = DatasetStatisticsView()
         self.stack.addWidget(self.stats_view)
         
         self.setCentralWidget(self.stack)
     
     def create_navbar(self):
-        """Create navigation toolbar."""
         navbar = self.addToolBar("Navigation")
         navbar.setMovable(False)
         navbar.setStyleSheet("""
@@ -1949,7 +1750,6 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Create container widget with horizontal layout
         container = QWidget()
         container_layout = QHBoxLayout()
         container_layout.setContentsMargins(0, 0, 0, 0)
@@ -2024,11 +1824,9 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    """Main entry point."""
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     
-    # Professional navy blue color scheme - independent of system theme
     app.setStyleSheet("""
         QMainWindow {
             background-color: #f5f6fa;
